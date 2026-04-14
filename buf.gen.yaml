@@ -1,0 +1,17 @@
+version: v2
+plugins:
+  - local: protoc-gen-go
+    out: backend/gen
+    opt: paths=source_relative
+
+  - local: protoc-gen-go-grpc
+    out: backend/gen
+    opt:
+      - paths=source_relative
+      - require_unimplemented_servers=false
+
+  - local: protoc-gen-grpc-gateway
+    out: backend/gen
+    opt:
+      - paths=source_relative
+      - generate_unbound_methods=true

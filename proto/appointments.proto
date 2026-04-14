@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package schedula.v1;
+
+option go_package = "github.com/vector-10/schedula/backend/gen;gen";
+
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+
+service AppointmentService {
+  rpc CreateAppointment(CreateAppointmentRequest) returns (CreateAppointmentResponse) {
+    option (google.api.http) = {
+      post: "/v1/appointments"
+      body: "*"
+    };
+  }
+
+  rpc GetAppointments(GetAppointmentsRequest) returns (GetAppointmentsResponse) {
+    option (google.api.http) = {
+      get: "/v1/appointments"
+    };
+  }
+
+  rpc CancelAppointment(CancelAppointmentRequest) returns (CancelAppointmentResponse) {
+    option (google.api.http) = {
+      post: "/v1/appointments/{appointment_id}/cancel"
+      body: "*"
+    };
+  }
+}
+
+message Appointment {
+  string                    id                  = 1;
+  string                    user_id             = 2;
+  string                    title               = 3;
+  string                    description         = 4;
+  google.protobuf.Timestamp start_time          = 5;
+  google.protobuf.Timestamp end_time            = 6;
+  string                    status              = 7;
+  string                    recurrence_group_id = 8;
+  google.protobuf.Timestamp created_at          = 9;
+  google.protobuf.Timestamp updated_at          = 10;
+}
+
+message CreateAppointmentRequest {
+  string                    title                = 1;
+  string                    description          = 2;
+  google.protobuf.Timestamp start_time           = 3;
+  google.protobuf.Timestamp end_time             = 4;
+  string                    idempotency_key      = 5;
+  string                    recurrence_rule      = 6;
+  google.protobuf.Timestamp recurrence_end_date  = 7;
+}
+
+message CreateAppointmentResponse {
+  repeated Appointment appointments = 1;
+}
+
+message GetAppointmentsRequest {}
+
+message GetAppointmentsResponse {
+  repeated Appointment appointments   = 1;
+  string               user_timezone  = 2;
+}
+
+message CancelAppointmentRequest {
+  string appointment_id = 1;
+}
+
+message CancelAppointmentResponse {
+  Appointment appointment = 1;
+}
