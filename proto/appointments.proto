@@ -61,6 +61,7 @@ message GetAppointmentsRequest {}
 message GetAppointmentsResponse {
   repeated Appointment appointments   = 1;
   string               user_timezone  = 2;
+  string               week_start     = 3;
 }
 
 message CancelAppointmentRequest {

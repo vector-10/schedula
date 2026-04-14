@@ -1,0 +1,12 @@
+# Binary
+server
+
+# Go build cache
+*.test
+*.out
+
+# Air (live reload tool)
+tmp/
+
+# Environment
+.env
