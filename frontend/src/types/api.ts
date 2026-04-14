@@ -5,7 +5,7 @@ export interface Appointment {
   description: string
   startTime: string
   endTime: string
-  status: 'scheduled' | 'cancelled'
+  status: 'scheduled' | 'completed' | 'cancelled'
   recurrenceGroupId: string
   createdAt: string
   updatedAt: string

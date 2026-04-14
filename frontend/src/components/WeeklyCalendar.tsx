@@ -110,25 +110,26 @@ function AppointmentBlock({
   timezone: string
   onSelect: (appointment: Appointment) => void
 }) {
-  const cancelled = appointment.status === 'cancelled'
   const top = getHourOffset(appointment.startTime, timezone)
   const height = getDurationHeight(appointment.startTime, appointment.endTime)
+
+  const { bgClass, titleClass } = (() => {
+    if (appointment.status === 'cancelled') {
+      return { bgClass: 'bg-gray-100 border border-gray-200', titleClass: 'text-gray-400 line-through' }
+    }
+    if (appointment.status === 'completed') {
+      return { bgClass: 'bg-blue-600 hover:bg-blue-700 transition-colors', titleClass: 'text-white' }
+    }
+    return { bgClass: 'bg-black hover:bg-gray-800 transition-colors', titleClass: 'text-white' }
+  })()
 
   return (
     <div
       onClick={() => onSelect(appointment)}
       style={{ top, height, left: 2, right: 2 }}
-      className={`absolute rounded-sm px-2 py-1 overflow-hidden cursor-pointer ${
-        cancelled
-          ? 'bg-gray-100 border border-gray-200'
-          : 'bg-black hover:bg-gray-800 transition-colors'
-      }`}
+      className={`absolute rounded-sm px-2 py-1 overflow-hidden cursor-pointer ${bgClass}`}
     >
-      <p
-        className={`text-xs font-medium leading-tight truncate ${
-          cancelled ? 'text-gray-400 line-through' : 'text-white'
-        }`}
-      >
+      <p className={`text-xs font-medium leading-tight truncate ${titleClass}`}>
         {appointment.title}
       </p>
       {height > 30 && (

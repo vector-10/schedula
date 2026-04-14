@@ -172,12 +172,12 @@ export default function AppointmentModal({ isOpen, onClose }: Props) {
               type="button"
               onClick={() => setForm(f => ({ ...f, isRecurring: !f.isRecurring, recurrenceEndDate: '' }))}
               className={`relative w-10 h-5 rounded-full transition-colors ${
-                form.isRecurring ? 'bg-black' : 'bg-gray-200'
+                form.isRecurring ? 'bg-black' : 'bg-gray-300'
               }`}
             >
               <span
-                className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                  form.isRecurring ? 'translate-x-5' : 'translate-x-0.5'
+                className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-transform duration-200 ${
+                  form.isRecurring ? 'translate-x-[2px]' : 'translate-x-[-17px]'
                 }`}
               />
             </button>

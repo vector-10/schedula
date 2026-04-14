@@ -56,8 +56,12 @@ export default function AppointmentDetailPanel({ appointment, timezone, onClose 
           <>
             <div className="flex items-start justify-between px-6 py-5 border-b border-gray-100">
               <div className="flex-1 pr-4">
-                <p className="text-xs font-medium text-gray-400 mb-1 uppercase tracking-wide">
-                  {appointment.status === 'cancelled' ? 'Cancelled' : 'Scheduled'}
+                <p className={`text-xs font-medium mb-1 uppercase tracking-wide ${
+                  appointment.status === 'completed' ? 'text-blue-600' :
+                  appointment.status === 'cancelled' ? 'text-gray-400' :
+                  'text-gray-400'
+                }`}>
+                  {appointment.status === 'cancelled' ? 'Cancelled' : appointment.status === 'completed' ? 'Completed' : 'Scheduled'}
                 </p>
                 <h2
                   className={`text-base font-semibold leading-snug ${

@@ -240,7 +240,22 @@ func (s *Service) GetAppointments(ctx context.Context, _ *gen.GetAppointmentsReq
 		return nil, status.Error(codes.Internal, "failed to get user preferences")
 	}
 
-	rows, err := s.db.QueryContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "failed to begin transaction")
+	}
+	defer tx.Rollback()
+
+	_, err = tx.ExecContext(ctx, `
+		UPDATE appointments
+		SET    status = 'completed', updated_at = NOW()
+		WHERE  user_id = $1 AND status = 'scheduled' AND end_time < NOW()
+	`, userID)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "failed to update completed appointments")
+	}
+
+	rows, err := tx.QueryContext(ctx, `
 		SELECT id, user_id, title, description, start_time, end_time,
 		       status, recurrence_group_id, created_at, updated_at
 		FROM   appointments
@@ -262,6 +277,10 @@ func (s *Service) GetAppointments(ctx context.Context, _ *gen.GetAppointmentsReq
 	}
 	if err := rows.Err(); err != nil {
 		return nil, status.Error(codes.Internal, "row iteration error")
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, status.Error(codes.Internal, "failed to commit transaction")
 	}
 
 	return &gen.GetAppointmentsResponse{
@@ -292,7 +311,7 @@ func (s *Service) CancelAppointment(ctx context.Context, req *gen.CancelAppointm
 
 	n, _ := result.RowsAffected()
 	if n == 0 {
-		return nil, status.Error(codes.NotFound, "appointment not found or already cancelled")
+		return nil, status.Error(codes.NotFound, "appointment not found, already cancelled, or completed")
 	}
 
 	var row appointmentRow
