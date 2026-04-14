@@ -127,7 +127,7 @@ function AppointmentBlock({
   return (
     <div
       style={{ top, height, left: 2, right: 2 }}
-      className={`absolute rounded-xs px-2 py-1 overflow-hidden group ${
+      className={`absolute rounded-sm px-2 py-1 overflow-hidden group ${
         cancelled
           ? 'bg-gray-100 border border-gray-200'
           : 'bg-black'
@@ -194,20 +194,20 @@ export default function WeeklyCalendar({ appointments, timezone, weekStart }: Pr
       <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 flex-shrink-0">
         <button
           onClick={() => navigate(-1)}
-          className="p-1 hover:bg-gray-100 rounded-xs transition-colors"
+          className="p-1 hover:bg-gray-100 rounded-sm transition-colors"
         >
           <FiChevronLeft size={16} />
         </button>
         <button
           onClick={() => navigate(1)}
-          className="p-1 hover:bg-gray-100 rounded-xs transition-colors"
+          className="p-1 hover:bg-gray-100 rounded-sm transition-colors"
         >
           <FiChevronRight size={16} />
         </button>
         <span className="text-sm font-medium text-black">{formatWeekRange(weekDays)}</span>
         <button
           onClick={goToToday}
-          className="ml-auto text-xs font-medium px-3 py-1 border border-gray-300 rounded-xs hover:border-gray-400 transition-colors"
+          className="ml-auto text-xs font-medium px-3 py-1 border border-gray-300 rounded-sm hover:border-gray-400 transition-colors"
         >
           Today
         </button>

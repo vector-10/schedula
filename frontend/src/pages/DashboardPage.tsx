@@ -61,12 +61,17 @@ export default function DashboardPage() {
         )}
 
         {/* FAB */}
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="fixed bottom-8 right-8 w-12 h-12 bg-black text-white rounded-full flex items-center justify-center shadow-lg hover:bg-gray-900 transition-colors z-40"
-        >
-          <FiPlus size={22} />
-        </button>
+        <div className="fixed bottom-8 right-8 z-40 flex flex-col items-end gap-2">
+          <span className="text-sm font-medium text-gray-700">
+            Create appointment
+          </span>
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="w-12 h-12 bg-black text-white rounded-full flex items-center justify-center shadow-lg hover:bg-gray-900 transition-colors"
+          >
+            <FiPlus size={22} />
+          </button>
+        </div>
       </main>
 
       <AppointmentModal

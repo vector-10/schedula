@@ -1,18 +1,49 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
+import { z } from 'zod'
 import { FiEye, FiEyeOff } from 'react-icons/fi'
 import { authApi, ApiError } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 
 type Tab = 'login' | 'register'
+type FieldErrors = Record<string, string>
 
 const ALL_TIMEZONES = (Intl as unknown as { supportedValuesOf(key: string): string[] }).supportedValuesOf('timeZone')
 const DETECTED_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone
 
+const loginSchema = z.object({
+  email: z.string().email('Enter a valid email address'),
+  password: z.string().min(1, 'Password is required'),
+})
+
+const registerSchema = z
+  .object({
+    firstName: z.string().min(1, 'First name is required'),
+    lastName: z.string().min(1, 'Last name is required'),
+    email: z.string().email('Enter a valid email address'),
+    password: z.string().min(8, 'Password must be at least 8 characters'),
+    confirmPassword: z.string().min(1, 'Please confirm your password'),
+    timezone: z.string().min(1, 'Timezone is required'),
+    weekStart: z.enum(['monday', 'sunday']),
+  })
+  .refine(data => data.password === data.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+  })
+
+function parseErrors(error: z.ZodError): FieldErrors {
+  const flat = error.flatten().fieldErrors as Record<string, string[] | undefined>
+  return Object.fromEntries(
+    Object.entries(flat).map(([k, v]) => [k, v?.[0] ?? ''])
+  )
+}
+
 export default function AuthPage() {
   const [tab, setTab] = useState<Tab>('login')
   const [loading, setLoading] = useState(false)
+  const [loginErrors, setLoginErrors] = useState<FieldErrors>({})
+  const [registerErrors, setRegisterErrors] = useState<FieldErrors>({})
   const { login } = useAuth()
   const navigate = useNavigate()
 
@@ -22,16 +53,33 @@ export default function AuthPage() {
     lastName: '',
     email: '',
     password: '',
+    confirmPassword: '',
     timezone: DETECTED_TIMEZONE,
     weekStart: 'monday' as 'monday' | 'sunday',
   })
 
+  function setLoginField<K extends keyof typeof loginForm>(key: K, value: string) {
+    setLoginForm(f => ({ ...f, [key]: value }))
+    setLoginErrors(e => ({ ...e, [key]: '' }))
+  }
+
+  function setRegisterField<K extends keyof typeof registerForm>(key: K, value: typeof registerForm[K]) {
+    setRegisterForm(f => ({ ...f, [key]: value }))
+    setRegisterErrors(e => ({ ...e, [key]: '' }))
+  }
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
+    const result = loginSchema.safeParse(loginForm)
+    if (!result.success) {
+      setLoginErrors(parseErrors(result.error))
+      return
+    }
     setLoading(true)
     try {
       const res = await authApi.login(loginForm)
       login(res.token, res.userId)
+      toast.success('Welcome back!')
       navigate('/dashboard', { replace: true })
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'An unexpected error occurred')
@@ -42,6 +90,11 @@ export default function AuthPage() {
 
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault()
+    const result = registerSchema.safeParse(registerForm)
+    if (!result.success) {
+      setRegisterErrors(parseErrors(result.error))
+      return
+    }
     setLoading(true)
     try {
       const res = await authApi.register(registerForm)
@@ -81,7 +134,7 @@ export default function AuthPage() {
             {(['login', 'register'] as Tab[]).map(t => (
               <button
                 key={t}
-                onClick={() => setTab(t)}
+                onClick={() => { setTab(t); setLoginErrors({}); setRegisterErrors({}) }}
                 className={`pb-2 mr-6 text-sm font-medium transition-colors capitalize ${
                   tab === t
                     ? 'text-black border-b-2 border-black'
@@ -94,71 +147,77 @@ export default function AuthPage() {
           </div>
 
           {tab === 'login' ? (
-            <form onSubmit={handleLogin} className="space-y-4">
-              <Field label="Email">
+            <form onSubmit={handleLogin} className="space-y-3">
+              <Field label="Email" error={loginErrors.email}>
                 <input
                   type="email"
-                  required
                   value={loginForm.email}
-                  onChange={e => setLoginForm(f => ({ ...f, email: e.target.value }))}
+                  onChange={e => setLoginField('email', e.target.value)}
                   placeholder="you@example.com"
-                  className={inputClass}
+                  className={inputClass(!!loginErrors.email)}
                 />
               </Field>
-              <Field label="Password">
+              <Field label="Password" error={loginErrors.password}>
                 <PasswordInput
                   value={loginForm.password}
-                  onChange={v => setLoginForm(f => ({ ...f, password: v }))}
+                  onChange={v => setLoginField('password', v)}
+                  hasError={!!loginErrors.password}
                 />
               </Field>
               <SubmitButton loading={loading} label="Log in" />
             </form>
           ) : (
-            <form onSubmit={handleRegister} className="space-y-4">
+            <form onSubmit={handleRegister} className="space-y-3">
               <div className="flex gap-3">
-                <Field label="First name">
+                <Field label="First name" error={registerErrors.firstName}>
                   <input
                     type="text"
-                    required
                     value={registerForm.firstName}
-                    onChange={e => setRegisterForm(f => ({ ...f, firstName: e.target.value }))}
+                    onChange={e => setRegisterField('firstName', e.target.value)}
                     placeholder="John"
-                    className={inputClass}
+                    className={inputClass(!!registerErrors.firstName)}
                   />
                 </Field>
-                <Field label="Last name">
+                <Field label="Last name" error={registerErrors.lastName}>
                   <input
                     type="text"
-                    required
                     value={registerForm.lastName}
-                    onChange={e => setRegisterForm(f => ({ ...f, lastName: e.target.value }))}
+                    onChange={e => setRegisterField('lastName', e.target.value)}
                     placeholder="Doe"
-                    className={inputClass}
+                    className={inputClass(!!registerErrors.lastName)}
                   />
                 </Field>
               </div>
-              <Field label="Email">
+              <Field label="Email" error={registerErrors.email}>
                 <input
                   type="email"
-                  required
                   value={registerForm.email}
-                  onChange={e => setRegisterForm(f => ({ ...f, email: e.target.value }))}
+                  onChange={e => setRegisterField('email', e.target.value)}
                   placeholder="you@example.com"
-                  className={inputClass}
+                  className={inputClass(!!registerErrors.email)}
                 />
               </Field>
-              <Field label="Password">
+              <Field label="Password" error={registerErrors.password}>
                 <PasswordInput
                   value={registerForm.password}
-                  onChange={v => setRegisterForm(f => ({ ...f, password: v }))}
-                  minLength={8}
+                  onChange={v => setRegisterField('password', v)}
                   placeholder="Min. 8 characters"
+                  hasError={!!registerErrors.password}
                 />
               </Field>
-              <Field label="Timezone">
+              <Field label="Confirm password" error={registerErrors.confirmPassword}>
+                <PasswordInput
+                  value={registerForm.confirmPassword}
+                  onChange={v => setRegisterField('confirmPassword', v)}
+                  placeholder="Re-enter your password"
+                  hasError={!!registerErrors.confirmPassword}
+                />
+              </Field>
+              <Field label="Timezone" error={registerErrors.timezone}>
                 <TimezoneSelect
                   value={registerForm.timezone}
-                  onChange={tz => setRegisterForm(f => ({ ...f, timezone: tz }))}
+                  onChange={tz => setRegisterField('timezone', tz)}
+                  hasError={!!registerErrors.timezone}
                 />
               </Field>
               <Field label="Week starts on">
@@ -167,8 +226,8 @@ export default function AuthPage() {
                     <button
                       key={day}
                       type="button"
-                      onClick={() => setRegisterForm(f => ({ ...f, weekStart: day }))}
-                      className={`flex-1 py-2 text-sm font-medium rounded-xs border transition-colors capitalize ${
+                      onClick={() => setRegisterField('weekStart', day)}
+                      className={`flex-1 py-2 text-sm font-medium rounded-sm border transition-colors capitalize ${
                         registerForm.weekStart === day
                           ? 'bg-black text-white border-black'
                           : 'bg-white text-gray-500 border-gray-300 hover:border-gray-400'
@@ -188,11 +247,22 @@ export default function AuthPage() {
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  error,
+  children,
+}: {
+  label: string
+  error?: string
+  children: React.ReactNode
+}) {
   return (
-    <div>
+    <div className="flex-1">
       <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
       {children}
+      <div className="min-h-[12px] mt-0.5">
+        {error && <p className="text-xs text-red-500 leading-none">{error}</p>}
+      </div>
     </div>
   )
 }
@@ -200,25 +270,23 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function PasswordInput({
   value,
   onChange,
-  minLength,
   placeholder = '••••••••',
+  hasError = false,
 }: {
   value: string
   onChange: (v: string) => void
-  minLength?: number
   placeholder?: string
+  hasError?: boolean
 }) {
   const [visible, setVisible] = useState(false)
   return (
     <div className="relative">
       <input
         type={visible ? 'text' : 'password'}
-        required
-        minLength={minLength}
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
-        className={`${inputClass} pr-10`}
+        className={`${inputClass(hasError)} pr-10`}
       />
       <button
         type="button"
@@ -234,9 +302,11 @@ function PasswordInput({
 function TimezoneSelect({
   value,
   onChange,
+  hasError = false,
 }: {
   value: string
   onChange: (tz: string) => void
+  hasError?: boolean
 }) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
@@ -265,10 +335,10 @@ function TimezoneSelect({
         onChange={e => setQuery(e.target.value)}
         onFocus={() => setOpen(true)}
         placeholder="Search timezone..."
-        className={inputClass}
+        className={inputClass(hasError)}
       />
       {open && (
-        <div className="absolute z-20 w-full bg-white border border-gray-200 rounded-xs shadow-lg max-h-48 overflow-y-auto mt-1">
+        <div className="absolute z-20 w-full bg-white border border-gray-200 rounded-sm shadow-lg max-h-48 overflow-y-auto mt-1">
           {filtered.length === 0 ? (
             <p className="px-3 py-2 text-sm text-gray-400">No results</p>
           ) : (
@@ -300,12 +370,13 @@ function SubmitButton({ loading, label }: { loading: boolean; label: string }) {
     <button
       type="submit"
       disabled={loading}
-      className="w-full bg-black text-white text-sm font-medium py-2.5 rounded-xs hover:bg-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors mt-2"
+      className="w-full bg-black text-white text-sm font-medium py-2.5 rounded-sm hover:bg-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors mt-2"
     >
       {loading ? 'Please wait...' : label}
     </button>
   )
 }
 
-const inputClass =
-  'w-full border border-gray-300 rounded-xs px-3 py-2 text-sm text-black placeholder-gray-400 focus:border-black transition-colors bg-white'
+function inputClass(hasError: boolean) {
+  return `w-full border ${hasError ? 'border-red-400' : 'border-gray-300'} rounded-sm px-3 py-2 text-sm text-black placeholder-gray-400 focus:border-black transition-colors bg-white`
+}

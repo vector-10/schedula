@@ -97,7 +97,7 @@ export default function AppointmentModal({ isOpen, onClose }: Props) {
       className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4"
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="bg-white w-full max-w-md rounded-xs shadow-xl">
+      <div className="bg-white w-full max-w-md rounded-sm shadow-xl">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <h2 className="text-base font-semibold text-black">New appointment</h2>
           <button
@@ -200,14 +200,14 @@ export default function AppointmentModal({ isOpen, onClose }: Props) {
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-2.5 text-sm font-medium border border-gray-300 rounded-xs text-gray-700 hover:border-gray-400 transition-colors"
+              className="flex-1 py-2.5 text-sm font-medium border border-gray-300 rounded-sm text-gray-700 hover:border-gray-400 transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isPending}
-              className="flex-1 py-2.5 text-sm font-medium bg-black text-white rounded-xs hover:bg-gray-900 disabled:opacity-50 transition-colors"
+              className="flex-1 py-2.5 text-sm font-medium bg-black text-white rounded-sm hover:bg-gray-900 disabled:opacity-50 transition-colors"
             >
               {isPending ? 'Booking...' : 'Book appointment'}
             </button>
@@ -228,4 +228,4 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 const inputClass =
-  'w-full border border-gray-300 rounded-xs px-3 py-2 text-sm text-black placeholder-gray-400 focus:border-black transition-colors bg-white'
+  'w-full border border-gray-300 rounded-sm px-3 py-2 text-sm text-black placeholder-gray-400 focus:border-black transition-colors bg-white'

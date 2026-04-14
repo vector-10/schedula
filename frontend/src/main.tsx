@@ -20,7 +20,17 @@ createRoot(document.getElementById('root')!).render(
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <App />
-        <Toaster position="top-right" richColors />
+        <Toaster
+          position="top-right"
+          toastOptions={{
+            classNames: {
+              toast: 'bg-white border border-gray-200 shadow-sm text-black',
+              success: '!text-green-600',
+              error: '!text-red-500',
+              actionButton: '!bg-black !text-white',
+            },
+          }}
+        />
       </AuthProvider>
     </QueryClientProvider>
   </StrictMode>,
