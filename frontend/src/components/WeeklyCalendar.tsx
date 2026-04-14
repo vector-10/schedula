@@ -1,13 +1,12 @@
 import { useRef, useEffect, useState } from 'react'
-import { toast } from 'sonner'
-import { FiChevronLeft, FiChevronRight, FiX } from 'react-icons/fi'
-import { useCancelAppointment } from '../hooks/useAppointments'
+import { FiChevronLeft, FiChevronRight } from 'react-icons/fi'
 import type { Appointment } from '../types/api'
 
 interface Props {
   appointments: Appointment[]
   timezone: string
   weekStart: 'monday' | 'sunday'
+  onSelect: (appointment: Appointment) => void
 }
 
 const HOUR_HEIGHT = 64
@@ -105,32 +104,24 @@ function formatWeekRange(days: Date[]): string {
 function AppointmentBlock({
   appointment,
   timezone,
+  onSelect,
 }: {
   appointment: Appointment
   timezone: string
+  onSelect: (appointment: Appointment) => void
 }) {
-  const { mutate: cancel } = useCancelAppointment()
   const cancelled = appointment.status === 'cancelled'
-
   const top = getHourOffset(appointment.startTime, timezone)
   const height = getDurationHeight(appointment.startTime, appointment.endTime)
 
-  function handleCancel() {
-    toast('Cancel this appointment?', {
-      action: {
-        label: 'Confirm',
-        onClick: () => cancel(appointment.id),
-      },
-    })
-  }
-
   return (
     <div
+      onClick={() => onSelect(appointment)}
       style={{ top, height, left: 2, right: 2 }}
-      className={`absolute rounded-sm px-2 py-1 overflow-hidden group ${
+      className={`absolute rounded-sm px-2 py-1 overflow-hidden cursor-pointer ${
         cancelled
           ? 'bg-gray-100 border border-gray-200'
-          : 'bg-black'
+          : 'bg-black hover:bg-gray-800 transition-colors'
       }`}
     >
       <p
@@ -141,17 +132,9 @@ function AppointmentBlock({
         {appointment.title}
       </p>
       {height > 30 && (
-        <p className={`text-xs leading-tight truncate ${cancelled ? 'text-gray-400' : 'text-gray-400'}`}>
+        <p className="text-xs leading-tight truncate text-gray-400">
           {formatTime(appointment.startTime, timezone)} – {formatTime(appointment.endTime, timezone)}
         </p>
-      )}
-      {!cancelled && (
-        <button
-          onClick={handleCancel}
-          className="absolute top-1 right-1 text-gray-600 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
-        >
-          <FiX size={11} />
-        </button>
       )}
     </div>
   )
@@ -159,7 +142,7 @@ function AppointmentBlock({
 
 // ── Main calendar ─────────────────────────────────────────────
 
-export default function WeeklyCalendar({ appointments, timezone, weekStart }: Props) {
+export default function WeeklyCalendar({ appointments, timezone, weekStart, onSelect }: Props) {
   const [weekStartDate, setWeekStartDate] = useState(() =>
     getWeekStartDate(new Date(), weekStart),
   )
@@ -293,6 +276,7 @@ export default function WeeklyCalendar({ appointments, timezone, weekStart }: Pr
                     key={appt.id}
                     appointment={appt}
                     timezone={timezone}
+                    onSelect={onSelect}
                   />
                 ))}
               </div>

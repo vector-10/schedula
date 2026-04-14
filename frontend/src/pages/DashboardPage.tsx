@@ -6,9 +6,12 @@ import { useProfile } from '../hooks/useProfile'
 import { useAppointments } from '../hooks/useAppointments'
 import WeeklyCalendar from '../components/WeeklyCalendar'
 import AppointmentModal from '../components/AppointmentModal'
+import AppointmentDetailPanel from '../components/AppointmentDetailPanel'
+import type { Appointment } from '../types/api'
 
 export default function DashboardPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null)
   const { logout } = useAuth()
   const navigate = useNavigate()
 
@@ -57,13 +60,14 @@ export default function DashboardPage() {
             appointments={appointments}
             timezone={timezone}
             weekStart={weekStart}
+            onSelect={setSelectedAppointment}
           />
         )}
 
         {/* FAB */}
         <div className="fixed bottom-8 right-8 z-40 flex flex-col items-end gap-2">
           <span className="text-sm font-medium text-gray-700">
-            Create appointment
+            Create
           </span>
           <button
             onClick={() => setIsModalOpen(true)}
@@ -77,6 +81,11 @@ export default function DashboardPage() {
       <AppointmentModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
+      />
+      <AppointmentDetailPanel
+        appointment={selectedAppointment}
+        timezone={timezone}
+        onClose={() => setSelectedAppointment(null)}
       />
     </div>
   )
