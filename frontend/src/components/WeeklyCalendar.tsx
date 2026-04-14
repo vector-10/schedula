@@ -239,9 +239,18 @@ export default function WeeklyCalendar({ appointments, timezone, weekStart, onSe
           {/* Day columns */}
           {weekDays.map((day, colIdx) => {
             const dateStr = formatDateISO(day)
-            const dayAppointments = appointments.filter(
+            const dayAppointmentsAll = appointments.filter(
               a => getDateStringInTz(a.startTime, timezone) === dateStr,
             )
+            const dayAppointments = dayAppointmentsAll.filter(appt => {
+              if (appt.status !== 'cancelled') return true
+              return !dayAppointmentsAll.some(
+                other =>
+                  other.status !== 'cancelled' &&
+                  other.startTime < appt.endTime &&
+                  other.endTime > appt.startTime,
+              )
+            })
             const isToday = isSameDay(day, today)
 
             return (

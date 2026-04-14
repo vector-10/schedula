@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"database/sql"
+	"log/slog"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -12,6 +13,11 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
+
+func internalErr(msg string, err error) error {
+	slog.Error(msg, "error", err)
+	return status.Error(codes.Internal, msg)
+}
 
 type Service struct {
 	gen.UnimplementedAuthServiceServer
@@ -39,7 +45,7 @@ func (s *Service) Register(ctx context.Context, req *gen.RegisterRequest) (*gen.
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
-		return nil, status.Error(codes.Internal, "failed to hash password")
+		return nil, internalErr("failed to hash password", err)
 	}
 
 	var userID string
@@ -52,14 +58,15 @@ func (s *Service) Register(ctx context.Context, req *gen.RegisterRequest) (*gen.
 		if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "23505" {
 			return nil, status.Error(codes.AlreadyExists, "email already registered")
 		}
-		return nil, status.Error(codes.Internal, "failed to create user")
+		return nil, internalErr("failed to create user", err)
 	}
 
 	token, err := s.generateToken(userID)
 	if err != nil {
-		return nil, status.Error(codes.Internal, "failed to generate token")
+		return nil, internalErr("failed to generate token", err)
 	}
 
+	slog.Info("user registered", "user_id", userID)
 	return &gen.RegisterResponse{Token: token, UserId: userID}, nil
 }
 
@@ -76,7 +83,7 @@ func (s *Service) Login(ctx context.Context, req *gen.LoginRequest) (*gen.LoginR
 		return nil, status.Error(codes.Unauthenticated, "invalid credentials")
 	}
 	if err != nil {
-		return nil, status.Error(codes.Internal, "failed to query user")
+		return nil, internalErr("failed to query user", err)
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(req.Password)); err != nil {
@@ -85,7 +92,7 @@ func (s *Service) Login(ctx context.Context, req *gen.LoginRequest) (*gen.LoginR
 
 	token, err := s.generateToken(userID)
 	if err != nil {
-		return nil, status.Error(codes.Internal, "failed to generate token")
+		return nil, internalErr("failed to generate token", err)
 	}
 
 	return &gen.LoginResponse{Token: token, UserId: userID}, nil
@@ -113,7 +120,7 @@ func (s *Service) GetProfile(ctx context.Context, _ *gen.GetProfileRequest) (*ge
 		return nil, status.Error(codes.NotFound, "user not found")
 	}
 	if err != nil {
-		return nil, status.Error(codes.Internal, "failed to get profile")
+		return nil, internalErr("failed to get profile", err)
 	}
 
 	return &profile, nil

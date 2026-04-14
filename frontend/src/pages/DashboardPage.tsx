@@ -86,6 +86,7 @@ export default function DashboardPage() {
         appointment={selectedAppointment}
         timezone={timezone}
         onClose={() => setSelectedAppointment(null)}
+        onCancelled={setSelectedAppointment}
       />
     </div>
   )

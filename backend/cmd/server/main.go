@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -18,9 +19,14 @@ import (
 	"github.com/vector-10/schedula/backend/internal/appointments"
 	"github.com/vector-10/schedula/backend/internal/auth"
 	"github.com/vector-10/schedula/backend/internal/db"
+	"github.com/vector-10/schedula/backend/internal/logging"
 )
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	})))
+
 	databaseURL := requireEnv("DATABASE_URL")
 	jwtSecret := requireEnv("JWT_SECRET")
 	grpcPort := getEnv("GRPC_PORT", "50051")
@@ -41,6 +47,7 @@ func main() {
 
 	grpcServer := grpc.NewServer(
 		grpc.ChainUnaryInterceptor(
+			logging.UnaryInterceptor(),
 			authMiddleware.UnaryInterceptor(),
 		),
 	)
@@ -56,7 +63,7 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("gRPC server listening on %s", grpcAddr)
+		slog.Info("gRPC server listening", "addr", grpcAddr)
 		if err := grpcServer.Serve(lis); err != nil {
 			log.Fatalf("grpc serve: %v", err)
 		}
@@ -83,7 +90,7 @@ func main() {
 	}
 
 	httpAddr := fmt.Sprintf(":%s", httpPort)
-	log.Printf("HTTP server listening on %s", httpAddr)
+	slog.Info("HTTP server listening", "addr", httpAddr)
 
 	if err := http.ListenAndServe(httpAddr, withCORS(mux)); err != nil {
 		log.Fatalf("http serve: %v", err)

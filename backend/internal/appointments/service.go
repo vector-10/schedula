@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -22,6 +23,11 @@ type Service struct {
 
 func NewService(db *sql.DB) *Service {
 	return &Service{db: db}
+}
+
+func internalErr(msg string, err error) error {
+	slog.Error(msg, "error", err)
+	return status.Error(codes.Internal, msg)
 }
 
 type scanner interface {
@@ -80,6 +86,15 @@ func (s *Service) CreateAppointment(ctx context.Context, req *gen.CreateAppointm
 		return nil, status.Error(codes.Unauthenticated, "not authenticated")
 	}
 
+	var userTimezone string
+	if err := s.db.QueryRowContext(ctx, `SELECT timezone FROM users WHERE id = $1`, userID).Scan(&userTimezone); err != nil {
+		return nil, internalErr("failed to get user timezone", err)
+	}
+	loc, err := time.LoadLocation(userTimezone)
+	if err != nil {
+		loc = time.UTC
+	}
+
 	if req.Title == "" {
 		return nil, status.Error(codes.InvalidArgument, "title is required")
 	}
@@ -131,7 +146,7 @@ func (s *Service) CreateAppointment(ctx context.Context, req *gen.CreateAppointm
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, status.Error(codes.Internal, "failed to begin transaction")
+		return nil, internalErr("failed to begin transaction", err)
 	}
 	defer tx.Rollback()
 
@@ -141,7 +156,7 @@ func (s *Service) CreateAppointment(ctx context.Context, req *gen.CreateAppointm
 		FOR UPDATE
 	`, userID)
 	if err != nil {
-		return nil, status.Error(codes.Internal, "failed to acquire lock")
+		return nil, internalErr("failed to acquire lock", err)
 	}
 	lockRows.Close()
 
@@ -159,12 +174,12 @@ func (s *Service) CreateAppointment(ctx context.Context, req *gen.CreateAppointm
 		if err == nil {
 			return nil, status.Errorf(codes.AlreadyExists,
 				"appointment on %s conflicts with an existing appointment at %s",
-				occ.startTime.UTC().Format("2006-01-02 15:04 UTC"),
-				conflictStart.UTC().Format("2006-01-02 15:04 UTC"),
+				occ.startTime.In(loc).Format("2006-01-02 15:04 MST"),
+				conflictStart.In(loc).Format("2006-01-02 15:04 MST"),
 			)
 		}
 		if err != sql.ErrNoRows {
-			return nil, status.Error(codes.Internal, "conflict check failed")
+			return nil, internalErr("conflict check failed", err)
 		}
 	}
 
@@ -192,7 +207,7 @@ func (s *Service) CreateAppointment(ctx context.Context, req *gen.CreateAppointm
 			recurrenceGroupID, now, now,
 		)
 		if err != nil {
-			return nil, status.Error(codes.Internal, "failed to insert appointment")
+			return nil, internalErr("failed to insert appointment", err)
 		}
 
 		a := &gen.Appointment{
@@ -219,13 +234,14 @@ func (s *Service) CreateAppointment(ctx context.Context, req *gen.CreateAppointm
 		ON CONFLICT (key, user_id) DO NOTHING
 	`, req.IdempotencyKey, userID, pq.Array(appointmentIDs))
 	if err != nil {
-		return nil, status.Error(codes.Internal, "failed to store idempotency key")
+		return nil, internalErr("failed to store idempotency key", err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return nil, status.Error(codes.Internal, "failed to commit transaction")
+		return nil, internalErr("failed to commit transaction", err)
 	}
 
+	slog.Info("appointment created", "user_id", userID, "count", len(appointments))
 	return &gen.CreateAppointmentResponse{Appointments: appointments}, nil
 }
 
@@ -237,12 +253,12 @@ func (s *Service) GetAppointments(ctx context.Context, _ *gen.GetAppointmentsReq
 
 	var timezone, weekStart string
 	if err := s.db.QueryRowContext(ctx, `SELECT timezone, week_start FROM users WHERE id = $1`, userID).Scan(&timezone, &weekStart); err != nil {
-		return nil, status.Error(codes.Internal, "failed to get user preferences")
+		return nil, internalErr("failed to get user preferences", err)
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, status.Error(codes.Internal, "failed to begin transaction")
+		return nil, internalErr("failed to begin transaction", err)
 	}
 	defer tx.Rollback()
 
@@ -252,7 +268,7 @@ func (s *Service) GetAppointments(ctx context.Context, _ *gen.GetAppointmentsReq
 		WHERE  user_id = $1 AND status = 'scheduled' AND end_time < NOW()
 	`, userID)
 	if err != nil {
-		return nil, status.Error(codes.Internal, "failed to update completed appointments")
+		return nil, internalErr("failed to update completed appointments", err)
 	}
 
 	rows, err := tx.QueryContext(ctx, `
@@ -263,7 +279,7 @@ func (s *Service) GetAppointments(ctx context.Context, _ *gen.GetAppointmentsReq
 		ORDER  BY start_time ASC
 	`, userID)
 	if err != nil {
-		return nil, status.Error(codes.Internal, "failed to query appointments")
+		return nil, internalErr("failed to query appointments", err)
 	}
 	defer rows.Close()
 
@@ -271,16 +287,16 @@ func (s *Service) GetAppointments(ctx context.Context, _ *gen.GetAppointmentsReq
 	for rows.Next() {
 		var row appointmentRow
 		if err := row.scan(rows); err != nil {
-			return nil, status.Error(codes.Internal, "failed to scan appointment")
+			return nil, internalErr("failed to scan appointment", err)
 		}
 		appointments = append(appointments, row.toProto())
 	}
 	if err := rows.Err(); err != nil {
-		return nil, status.Error(codes.Internal, "row iteration error")
+		return nil, internalErr("row iteration error", err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return nil, status.Error(codes.Internal, "failed to commit transaction")
+		return nil, internalErr("failed to commit transaction", err)
 	}
 
 	return &gen.GetAppointmentsResponse{
@@ -306,7 +322,7 @@ func (s *Service) CancelAppointment(ctx context.Context, req *gen.CancelAppointm
 		WHERE  id = $1 AND user_id = $2 AND status = 'scheduled'
 	`, req.AppointmentId, userID)
 	if err != nil {
-		return nil, status.Error(codes.Internal, "failed to cancel appointment")
+		return nil, internalErr("failed to cancel appointment", err)
 	}
 
 	n, _ := result.RowsAffected()
@@ -320,9 +336,10 @@ func (s *Service) CancelAppointment(ctx context.Context, req *gen.CancelAppointm
 		       status, recurrence_group_id, created_at, updated_at
 		FROM   appointments WHERE id = $1
 	`, req.AppointmentId)); err != nil {
-		return nil, status.Error(codes.Internal, "failed to fetch cancelled appointment")
+		return nil, internalErr("failed to fetch cancelled appointment", err)
 	}
 
+	slog.Info("appointment cancelled", "user_id", userID, "appointment_id", req.AppointmentId)
 	return &gen.CancelAppointmentResponse{Appointment: row.toProto()}, nil
 }
 

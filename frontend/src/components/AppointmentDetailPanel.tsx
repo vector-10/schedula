@@ -7,6 +7,7 @@ interface Props {
   appointment: Appointment | null
   timezone: string
   onClose: () => void
+  onCancelled: (updated: Appointment) => void
 }
 
 function formatDate(utcString: string, timezone: string): string {
@@ -28,7 +29,7 @@ function formatTime(utcString: string, timezone: string): string {
   }).format(new Date(utcString))
 }
 
-export default function AppointmentDetailPanel({ appointment, timezone, onClose }: Props) {
+export default function AppointmentDetailPanel({ appointment, timezone, onClose, onCancelled }: Props) {
   const { mutate: cancel, isPending } = useCancelAppointment()
   const open = appointment !== null
 
@@ -37,7 +38,9 @@ export default function AppointmentDetailPanel({ appointment, timezone, onClose 
     toast('Cancel this appointment?', {
       action: {
         label: 'Confirm',
-        onClick: () => cancel(appointment.id),
+        onClick: () => cancel(appointment.id, {
+          onSuccess: (data) => onCancelled(data.appointment),
+        }),
       },
     })
   }
