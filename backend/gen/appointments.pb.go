@@ -315,6 +315,7 @@ type GetAppointmentsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Appointments  []*Appointment         `protobuf:"bytes,1,rep,name=appointments,proto3" json:"appointments,omitempty"`
 	UserTimezone  string                 `protobuf:"bytes,2,opt,name=user_timezone,json=userTimezone,proto3" json:"user_timezone,omitempty"`
+	WeekStart     string                 `protobuf:"bytes,3,opt,name=week_start,json=weekStart,proto3" json:"week_start,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -359,6 +360,13 @@ func (x *GetAppointmentsResponse) GetAppointments() []*Appointment {
 func (x *GetAppointmentsResponse) GetUserTimezone() string {
 	if x != nil {
 		return x.UserTimezone
+	}
+	return ""
+}
+
+func (x *GetAppointmentsResponse) GetWeekStart() string {
+	if x != nil {
+		return x.WeekStart
 	}
 	return ""
 }
@@ -482,10 +490,12 @@ const file_appointments_proto_rawDesc = "" +
 	"\x13recurrence_end_date\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\x11recurrenceEndDate\"Y\n" +
 	"\x19CreateAppointmentResponse\x12<\n" +
 	"\fappointments\x18\x01 \x03(\v2\x18.schedula.v1.AppointmentR\fappointments\"\x18\n" +
-	"\x16GetAppointmentsRequest\"|\n" +
+	"\x16GetAppointmentsRequest\"\x9b\x01\n" +
 	"\x17GetAppointmentsResponse\x12<\n" +
 	"\fappointments\x18\x01 \x03(\v2\x18.schedula.v1.AppointmentR\fappointments\x12#\n" +
-	"\ruser_timezone\x18\x02 \x01(\tR\fuserTimezone\"A\n" +
+	"\ruser_timezone\x18\x02 \x01(\tR\fuserTimezone\x12\x1d\n" +
+	"\n" +
+	"week_start\x18\x03 \x01(\tR\tweekStart\"A\n" +
 	"\x18CancelAppointmentRequest\x12%\n" +
 	"\x0eappointment_id\x18\x01 \x01(\tR\rappointmentId\"W\n" +
 	"\x19CancelAppointmentResponse\x12:\n" +

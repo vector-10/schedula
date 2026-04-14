@@ -15,6 +15,18 @@ export interface RegisterRequest {
   email: string
   password: string
   timezone: string
+  weekStart: 'monday' | 'sunday'
+  firstName: string
+  lastName: string
+}
+
+export interface UserProfile {
+  id: string
+  email: string
+  firstName: string
+  lastName: string
+  timezone: string
+  weekStart: 'monday' | 'sunday'
 }
 
 export interface RegisterResponse {
@@ -49,6 +61,7 @@ export interface CreateAppointmentResponse {
 export interface GetAppointmentsResponse {
   appointments: Appointment[]
   userTimezone: string
+  weekStart: 'monday' | 'sunday'
 }
 
 export interface CancelAppointmentResponse {

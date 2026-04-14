@@ -27,6 +27,9 @@ type RegisterRequest struct {
 	Email         string                 `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
 	Password      string                 `protobuf:"bytes,2,opt,name=password,proto3" json:"password,omitempty"`
 	Timezone      string                 `protobuf:"bytes,3,opt,name=timezone,proto3" json:"timezone,omitempty"`
+	WeekStart     string                 `protobuf:"bytes,4,opt,name=week_start,json=weekStart,proto3" json:"week_start,omitempty"`
+	FirstName     string                 `protobuf:"bytes,5,opt,name=first_name,json=firstName,proto3" json:"first_name,omitempty"`
+	LastName      string                 `protobuf:"bytes,6,opt,name=last_name,json=lastName,proto3" json:"last_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -78,6 +81,27 @@ func (x *RegisterRequest) GetPassword() string {
 func (x *RegisterRequest) GetTimezone() string {
 	if x != nil {
 		return x.Timezone
+	}
+	return ""
+}
+
+func (x *RegisterRequest) GetWeekStart() string {
+	if x != nil {
+		return x.WeekStart
+	}
+	return ""
+}
+
+func (x *RegisterRequest) GetFirstName() string {
+	if x != nil {
+		return x.FirstName
+	}
+	return ""
+}
+
+func (x *RegisterRequest) GetLastName() string {
+	if x != nil {
+		return x.LastName
 	}
 	return ""
 }
@@ -238,16 +262,141 @@ func (x *LoginResponse) GetUserId() string {
 	return ""
 }
 
+type GetProfileRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetProfileRequest) Reset() {
+	*x = GetProfileRequest{}
+	mi := &file_auth_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetProfileRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetProfileRequest) ProtoMessage() {}
+
+func (x *GetProfileRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetProfileRequest.ProtoReflect.Descriptor instead.
+func (*GetProfileRequest) Descriptor() ([]byte, []int) {
+	return file_auth_proto_rawDescGZIP(), []int{4}
+}
+
+type GetProfileResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Email         string                 `protobuf:"bytes,2,opt,name=email,proto3" json:"email,omitempty"`
+	FirstName     string                 `protobuf:"bytes,3,opt,name=first_name,json=firstName,proto3" json:"first_name,omitempty"`
+	LastName      string                 `protobuf:"bytes,4,opt,name=last_name,json=lastName,proto3" json:"last_name,omitempty"`
+	Timezone      string                 `protobuf:"bytes,5,opt,name=timezone,proto3" json:"timezone,omitempty"`
+	WeekStart     string                 `protobuf:"bytes,6,opt,name=week_start,json=weekStart,proto3" json:"week_start,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetProfileResponse) Reset() {
+	*x = GetProfileResponse{}
+	mi := &file_auth_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetProfileResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetProfileResponse) ProtoMessage() {}
+
+func (x *GetProfileResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetProfileResponse.ProtoReflect.Descriptor instead.
+func (*GetProfileResponse) Descriptor() ([]byte, []int) {
+	return file_auth_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *GetProfileResponse) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *GetProfileResponse) GetEmail() string {
+	if x != nil {
+		return x.Email
+	}
+	return ""
+}
+
+func (x *GetProfileResponse) GetFirstName() string {
+	if x != nil {
+		return x.FirstName
+	}
+	return ""
+}
+
+func (x *GetProfileResponse) GetLastName() string {
+	if x != nil {
+		return x.LastName
+	}
+	return ""
+}
+
+func (x *GetProfileResponse) GetTimezone() string {
+	if x != nil {
+		return x.Timezone
+	}
+	return ""
+}
+
+func (x *GetProfileResponse) GetWeekStart() string {
+	if x != nil {
+		return x.WeekStart
+	}
+	return ""
+}
+
 var File_auth_proto protoreflect.FileDescriptor
 
 const file_auth_proto_rawDesc = "" +
 	"\n" +
 	"\n" +
-	"auth.proto\x12\vschedula.v1\x1a\x1cgoogle/api/annotations.proto\"_\n" +
+	"auth.proto\x12\vschedula.v1\x1a\x1cgoogle/api/annotations.proto\"\xba\x01\n" +
 	"\x0fRegisterRequest\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12\x1a\n" +
 	"\bpassword\x18\x02 \x01(\tR\bpassword\x12\x1a\n" +
-	"\btimezone\x18\x03 \x01(\tR\btimezone\"A\n" +
+	"\btimezone\x18\x03 \x01(\tR\btimezone\x12\x1d\n" +
+	"\n" +
+	"week_start\x18\x04 \x01(\tR\tweekStart\x12\x1d\n" +
+	"\n" +
+	"first_name\x18\x05 \x01(\tR\tfirstName\x12\x1b\n" +
+	"\tlast_name\x18\x06 \x01(\tR\blastName\"A\n" +
 	"\x10RegisterResponse\x12\x14\n" +
 	"\x05token\x18\x01 \x01(\tR\x05token\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\"@\n" +
@@ -256,10 +405,22 @@ const file_auth_proto_rawDesc = "" +
 	"\bpassword\x18\x02 \x01(\tR\bpassword\">\n" +
 	"\rLoginResponse\x12\x14\n" +
 	"\x05token\x18\x01 \x01(\tR\x05token\x12\x17\n" +
-	"\auser_id\x18\x02 \x01(\tR\x06userId2\xcf\x01\n" +
+	"\auser_id\x18\x02 \x01(\tR\x06userId\"\x13\n" +
+	"\x11GetProfileRequest\"\xb1\x01\n" +
+	"\x12GetProfileResponse\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
+	"\x05email\x18\x02 \x01(\tR\x05email\x12\x1d\n" +
+	"\n" +
+	"first_name\x18\x03 \x01(\tR\tfirstName\x12\x1b\n" +
+	"\tlast_name\x18\x04 \x01(\tR\blastName\x12\x1a\n" +
+	"\btimezone\x18\x05 \x01(\tR\btimezone\x12\x1d\n" +
+	"\n" +
+	"week_start\x18\x06 \x01(\tR\tweekStart2\xb8\x02\n" +
 	"\vAuthService\x12e\n" +
 	"\bRegister\x12\x1c.schedula.v1.RegisterRequest\x1a\x1d.schedula.v1.RegisterResponse\"\x1c\x82\xd3\xe4\x93\x02\x16:\x01*\"\x11/v1/auth/register\x12Y\n" +
-	"\x05Login\x12\x19.schedula.v1.LoginRequest\x1a\x1a.schedula.v1.LoginResponse\"\x19\x82\xd3\xe4\x93\x02\x13:\x01*\"\x0e/v1/auth/loginB/Z-github.com/vector-10/schedula/backend/gen;genb\x06proto3"
+	"\x05Login\x12\x19.schedula.v1.LoginRequest\x1a\x1a.schedula.v1.LoginResponse\"\x19\x82\xd3\xe4\x93\x02\x13:\x01*\"\x0e/v1/auth/login\x12g\n" +
+	"\n" +
+	"GetProfile\x12\x1e.schedula.v1.GetProfileRequest\x1a\x1f.schedula.v1.GetProfileResponse\"\x18\x82\xd3\xe4\x93\x02\x12\x12\x10/v1/auth/profileB/Z-github.com/vector-10/schedula/backend/gen;genb\x06proto3"
 
 var (
 	file_auth_proto_rawDescOnce sync.Once
@@ -273,20 +434,24 @@ func file_auth_proto_rawDescGZIP() []byte {
 	return file_auth_proto_rawDescData
 }
 
-var file_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_auth_proto_goTypes = []any{
-	(*RegisterRequest)(nil),  // 0: schedula.v1.RegisterRequest
-	(*RegisterResponse)(nil), // 1: schedula.v1.RegisterResponse
-	(*LoginRequest)(nil),     // 2: schedula.v1.LoginRequest
-	(*LoginResponse)(nil),    // 3: schedula.v1.LoginResponse
+	(*RegisterRequest)(nil),    // 0: schedula.v1.RegisterRequest
+	(*RegisterResponse)(nil),   // 1: schedula.v1.RegisterResponse
+	(*LoginRequest)(nil),       // 2: schedula.v1.LoginRequest
+	(*LoginResponse)(nil),      // 3: schedula.v1.LoginResponse
+	(*GetProfileRequest)(nil),  // 4: schedula.v1.GetProfileRequest
+	(*GetProfileResponse)(nil), // 5: schedula.v1.GetProfileResponse
 }
 var file_auth_proto_depIdxs = []int32{
 	0, // 0: schedula.v1.AuthService.Register:input_type -> schedula.v1.RegisterRequest
 	2, // 1: schedula.v1.AuthService.Login:input_type -> schedula.v1.LoginRequest
-	1, // 2: schedula.v1.AuthService.Register:output_type -> schedula.v1.RegisterResponse
-	3, // 3: schedula.v1.AuthService.Login:output_type -> schedula.v1.LoginResponse
-	2, // [2:4] is the sub-list for method output_type
-	0, // [0:2] is the sub-list for method input_type
+	4, // 2: schedula.v1.AuthService.GetProfile:input_type -> schedula.v1.GetProfileRequest
+	1, // 3: schedula.v1.AuthService.Register:output_type -> schedula.v1.RegisterResponse
+	3, // 4: schedula.v1.AuthService.Login:output_type -> schedula.v1.LoginResponse
+	5, // 5: schedula.v1.AuthService.GetProfile:output_type -> schedula.v1.GetProfileResponse
+	3, // [3:6] is the sub-list for method output_type
+	0, // [0:3] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
@@ -303,7 +468,7 @@ func file_auth_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_auth_proto_rawDesc), len(file_auth_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

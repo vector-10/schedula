@@ -235,9 +235,9 @@ func (s *Service) GetAppointments(ctx context.Context, _ *gen.GetAppointmentsReq
 		return nil, status.Error(codes.Unauthenticated, "not authenticated")
 	}
 
-	var timezone string
-	if err := s.db.QueryRowContext(ctx, `SELECT timezone FROM users WHERE id = $1`, userID).Scan(&timezone); err != nil {
-		return nil, status.Error(codes.Internal, "failed to get user timezone")
+	var timezone, weekStart string
+	if err := s.db.QueryRowContext(ctx, `SELECT timezone, week_start FROM users WHERE id = $1`, userID).Scan(&timezone, &weekStart); err != nil {
+		return nil, status.Error(codes.Internal, "failed to get user preferences")
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
@@ -267,6 +267,7 @@ func (s *Service) GetAppointments(ctx context.Context, _ *gen.GetAppointmentsReq
 	return &gen.GetAppointmentsResponse{
 		Appointments: appointments,
 		UserTimezone: timezone,
+		WeekStart:    weekStart,
 	}, nil
 }
 

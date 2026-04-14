@@ -27,6 +27,15 @@ func (s *Service) Register(ctx context.Context, req *gen.RegisterRequest) (*gen.
 	if req.Email == "" || req.Password == "" || req.Timezone == "" {
 		return nil, status.Error(codes.InvalidArgument, "email, password, and timezone are required")
 	}
+	if req.FirstName == "" || req.LastName == "" {
+		return nil, status.Error(codes.InvalidArgument, "first_name and last_name are required")
+	}
+	if req.WeekStart == "" {
+		req.WeekStart = "monday"
+	}
+	if req.WeekStart != "monday" && req.WeekStart != "sunday" {
+		return nil, status.Error(codes.InvalidArgument, "week_start must be 'monday' or 'sunday'")
+	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
@@ -35,10 +44,10 @@ func (s *Service) Register(ctx context.Context, req *gen.RegisterRequest) (*gen.
 
 	var userID string
 	err = s.db.QueryRowContext(ctx, `
-		INSERT INTO users (email, password_hash, timezone, created_at)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO users (email, password_hash, timezone, week_start, first_name, last_name, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id
-	`, req.Email, string(hash), req.Timezone, time.Now().UTC()).Scan(&userID)
+	`, req.Email, string(hash), req.Timezone, req.WeekStart, req.FirstName, req.LastName, time.Now().UTC()).Scan(&userID)
 	if err != nil {
 		if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "23505" {
 			return nil, status.Error(codes.AlreadyExists, "email already registered")
@@ -80,6 +89,34 @@ func (s *Service) Login(ctx context.Context, req *gen.LoginRequest) (*gen.LoginR
 	}
 
 	return &gen.LoginResponse{Token: token, UserId: userID}, nil
+}
+
+func (s *Service) GetProfile(ctx context.Context, _ *gen.GetProfileRequest) (*gen.GetProfileResponse, error) {
+	userID := GetUserIDFromContext(ctx)
+	if userID == "" {
+		return nil, status.Error(codes.Unauthenticated, "not authenticated")
+	}
+
+	var profile gen.GetProfileResponse
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, email, first_name, last_name, timezone, week_start
+		FROM users WHERE id = $1
+	`, userID).Scan(
+		&profile.Id,
+		&profile.Email,
+		&profile.FirstName,
+		&profile.LastName,
+		&profile.Timezone,
+		&profile.WeekStart,
+	)
+	if err == sql.ErrNoRows {
+		return nil, status.Error(codes.NotFound, "user not found")
+	}
+	if err != nil {
+		return nil, status.Error(codes.Internal, "failed to get profile")
+	}
+
+	return &profile, nil
 }
 
 func (s *Service) generateToken(userID string) (string, error) {

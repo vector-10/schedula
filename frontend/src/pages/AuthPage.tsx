@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext'
 
 type Tab = 'login' | 'register'
 
-const ALL_TIMEZONES = Intl.supportedValuesOf('timeZone')
+const ALL_TIMEZONES = (Intl as unknown as { supportedValuesOf(key: string): string[] }).supportedValuesOf('timeZone')
 const DETECTED_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone
 
 export default function AuthPage() {
@@ -18,9 +18,12 @@ export default function AuthPage() {
 
   const [loginForm, setLoginForm] = useState({ email: '', password: '' })
   const [registerForm, setRegisterForm] = useState({
+    firstName: '',
+    lastName: '',
     email: '',
     password: '',
     timezone: DETECTED_TIMEZONE,
+    weekStart: 'monday' as 'monday' | 'sunday',
   })
 
   async function handleLogin(e: React.FormEvent) {
@@ -112,6 +115,28 @@ export default function AuthPage() {
             </form>
           ) : (
             <form onSubmit={handleRegister} className="space-y-4">
+              <div className="flex gap-3">
+                <Field label="First name">
+                  <input
+                    type="text"
+                    required
+                    value={registerForm.firstName}
+                    onChange={e => setRegisterForm(f => ({ ...f, firstName: e.target.value }))}
+                    placeholder="John"
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="Last name">
+                  <input
+                    type="text"
+                    required
+                    value={registerForm.lastName}
+                    onChange={e => setRegisterForm(f => ({ ...f, lastName: e.target.value }))}
+                    placeholder="Doe"
+                    className={inputClass}
+                  />
+                </Field>
+              </div>
               <Field label="Email">
                 <input
                   type="email"
@@ -135,6 +160,24 @@ export default function AuthPage() {
                   value={registerForm.timezone}
                   onChange={tz => setRegisterForm(f => ({ ...f, timezone: tz }))}
                 />
+              </Field>
+              <Field label="Week starts on">
+                <div className="flex gap-2">
+                  {(['monday', 'sunday'] as const).map(day => (
+                    <button
+                      key={day}
+                      type="button"
+                      onClick={() => setRegisterForm(f => ({ ...f, weekStart: day }))}
+                      className={`flex-1 py-2 text-sm font-medium rounded-xs border transition-colors capitalize ${
+                        registerForm.weekStart === day
+                          ? 'bg-black text-white border-black'
+                          : 'bg-white text-gray-500 border-gray-300 hover:border-gray-400'
+                      }`}
+                    >
+                      {day}
+                    </button>
+                  ))}
+                </div>
               </Field>
               <SubmitButton loading={loading} label="Create account" />
             </form>
@@ -200,7 +243,7 @@ function TimezoneSelect({
   const containerRef = useRef<HTMLDivElement>(null)
 
   const filtered = query.trim()
-    ? ALL_TIMEZONES.filter(tz => tz.toLowerCase().includes(query.toLowerCase()))
+    ? ALL_TIMEZONES.filter((tz: string) => tz.toLowerCase().includes(query.toLowerCase()))
     : ALL_TIMEZONES
 
   useEffect(() => {
@@ -229,7 +272,7 @@ function TimezoneSelect({
           {filtered.length === 0 ? (
             <p className="px-3 py-2 text-sm text-gray-400">No results</p>
           ) : (
-            filtered.slice(0, 80).map(tz => (
+            filtered.slice(0, 80).map((tz: string) => (
               <button
                 key={tz}
                 type="button"

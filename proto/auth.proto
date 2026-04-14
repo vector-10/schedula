@@ -1,44 +1,64 @@
-    syntax = "proto3";
+syntax = "proto3";
 
-    package schedula.v1;
+package schedula.v1;
 
-    option go_package = "github.com/vector-10/schedula/backend/gen;gen";
+option go_package = "github.com/vector-10/schedula/backend/gen;gen";
 
-    import "google/api/annotations.proto";
+import "google/api/annotations.proto";
 
-    service AuthService {
-    rpc Register(RegisterRequest) returns (RegisterResponse) {
-        option (google.api.http) = {
-        post: "/v1/auth/register"
-        body: "*"
-        };
-    }
+service AuthService {
+  rpc Register(RegisterRequest) returns (RegisterResponse) {
+    option (google.api.http) = {
+      post: "/v1/auth/register"
+      body: "*"
+    };
+  }
 
-    rpc Login(LoginRequest) returns (LoginResponse) {
-        option (google.api.http) = {
-        post: "/v1/auth/login"
-        body: "*"
-        };
-    }
-    }
+  rpc Login(LoginRequest) returns (LoginResponse) {
+    option (google.api.http) = {
+      post: "/v1/auth/login"
+      body: "*"
+    };
+  }
 
-    message RegisterRequest {
-    string email    = 1;
-    string password = 2;
-    string timezone = 3;
-    }
+  rpc GetProfile(GetProfileRequest) returns (GetProfileResponse) {
+    option (google.api.http) = {
+      get: "/v1/auth/profile"
+    };
+  }
+}
 
-    message RegisterResponse {
-    string token   = 1;
-    string user_id = 2;
-    }
+message RegisterRequest {
+  string email      = 1;
+  string password   = 2;
+  string timezone   = 3;
+  string week_start = 4;
+  string first_name = 5;
+  string last_name  = 6;
+}
 
-    message LoginRequest {
-    string email    = 1;
-    string password = 2;
-    }
+message RegisterResponse {
+  string token   = 1;
+  string user_id = 2;
+}
 
-    message LoginResponse {
-    string token   = 1;
-    string user_id = 2;
-    }
+message LoginRequest {
+  string email    = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  string token   = 1;
+  string user_id = 2;
+}
+
+message GetProfileRequest {}
+
+message GetProfileResponse {
+  string id         = 1;
+  string email      = 2;
+  string first_name = 3;
+  string last_name  = 4;
+  string timezone   = 5;
+  string week_start = 6;
+}

@@ -7,6 +7,7 @@ import type {
   LoginResponse,
   RegisterRequest,
   RegisterResponse,
+  UserProfile,
 } from '../types/api'
 
 const BASE_URL = '/v1'
@@ -101,6 +102,8 @@ export const authApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  getProfile: () => request<UserProfile>('/auth/profile'),
 }
 
 export const appointmentsApi = {
