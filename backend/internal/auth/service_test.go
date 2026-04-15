@@ -60,7 +60,7 @@ func TestRegister_DuplicateEmail(t *testing.T) {
 	})
 
 	require.Error(t, err)
-	assert.Equal(t, codes.AlreadyExists, status.Code(err))
+	assert.Equal(t, codes.InvalidArgument, status.Code(err))
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 

@@ -20,6 +20,7 @@ import (
 	"github.com/vector-10/schedula/backend/internal/auth"
 	"github.com/vector-10/schedula/backend/internal/db"
 	"github.com/vector-10/schedula/backend/internal/logging"
+	"github.com/vector-10/schedula/backend/internal/ratelimit"
 )
 
 func main() {
@@ -44,9 +45,11 @@ func main() {
 	}
 
 	authMiddleware := auth.NewMiddleware(jwtSecret)
+	rateLimiter := ratelimit.NewLimiter()
 
 	grpcServer := grpc.NewServer(
 		grpc.ChainUnaryInterceptor(
+			rateLimiter.UnaryInterceptor(),
 			logging.UnaryInterceptor(),
 			authMiddleware.UnaryInterceptor(),
 		),

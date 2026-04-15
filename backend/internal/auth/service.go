@@ -56,7 +56,7 @@ func (s *Service) Register(ctx context.Context, req *gen.RegisterRequest) (*gen.
 	`, req.Email, string(hash), req.Timezone, req.WeekStart, req.FirstName, req.LastName, time.Now().UTC()).Scan(&userID)
 	if err != nil {
 		if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "23505" {
-			return nil, status.Error(codes.AlreadyExists, "email already registered")
+			return nil, status.Error(codes.InvalidArgument, "invalid credentials")
 		}
 		return nil, internalErr("failed to create user", err)
 	}
