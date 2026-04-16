@@ -2,7 +2,8 @@
 
 ## How I Read This Assessment
 
-This assessment is designed to evaluate how I think and approach problem solving when faced with ambiguous requirements. My goal was to understand the system, make defensible assumptions while building, then document my decisions, why I made them and the trade-offs as clearly and precisely as possible.
+When I first read the opening lines of the assessment, I immediately thought of Calendly. I began mapping out an MVP to build with shared calendars, availability windows. Then I saw the phrase "Independent problem-solving and delivery" and read through till the end.
+The hardest part was not the technical implementation but knowing what not to build. Every interesting UX feature I thought of had a cost in complexity and that complexity had a cost on data consistency and correctness under concurrent load. This shaped every decision I made.
 
 ---
 
@@ -12,13 +13,17 @@ This assessment is designed to evaluate how I think and approach problem solving
 
 The assessment did not specify who books appointments or for whom. I assumed a single-user personal scheduling system where each authenticated user manages their own calendar. No attendee management, no invites, no host/guest distinction. Adding any of these features would introduce premature complexity without a clear business justification from the brief.
 
+When I first read the assessment I genuinely started designing an attendee system in my head. Shared calendars, invite links, a host and guest model. I had to stop myself because the moment you introduce attendees, the entire data model changes. You need an attendees table, an invite system, a notification layer to tell people about bookings, and the conflict definition becomes ambiguous fast. Whose conflict matters when two users share a slot? The host's? All attendees? That one feature would have doubled the scope and introduced questions the assessment brief never answered. I scoped it out and documented it as a stakeholder question instead.
+
 ### What Makes Up an Appointment
 
-A title, description (optional), date, start time, end time and status. These fields cover the minimum viable information for any scheduling use case without making assumptions about the business domain.
+A title, description (optional), date, start time, end time and status. These fields cover the minimum viable information for any scheduling use case without making assumptions about the business domain. If the business needed appointment types or categories, the schema grows, the conflict logic would need to account for type-based rules and the calendar display would need grouping or colour coding per category.
 
 ### Conflict Definition
 
-What constitutes a "schedule conflict" was left undefined. I interpreted a conflict as any time overlap between two appointments belonging to the same user. A new appointment conflicts if its start_time comes before an existing appointment's end_time and its end_time comes after an existing appointment's start_time. Cancelled appointments are excluded from conflict checks. Back-to-back appointments are explicitly allowed.
+What constitutes a "schedule conflict" was left undefined. I interpreted a conflict as any time overlap between two appointments belonging to the same user. Cancelled appointments are excluded from conflict checks. Back-to-back appointment time slots are explicitly allowed. If the business wanted a buffer between appointments, the overlap query gets an extra interval parameter, the conflict error message changes and the frontend slot picker would need to reflect that constraint.
+
+During testing I noticed the conflict error message was showing times one hour behind what the user actually booked. The bug was that the error message was formatting times in UTC rather than the user's local timezone. The fix was in the backend. The user's timezone is now fetched from the database before validation runs, and time.In(loc) is used to format the conflict message. A small thing but it would have been genuinely confusing to a user who books a 9am slot and gets told they are conflicting with something at 8am.
 
 ### Timezone Handling
 
@@ -31,6 +36,8 @@ Known gap: if a user travels and their browser timezone shifts, appointments dis
 ### What Was Deliberately Scoped Out
 
 Attendee management, availability windows, appointment editing, admin roles and email notifications. None are essential to the core functionality of schedule management and would introduce complexity without a clear business justification from the assessment brief.
+
+The assessment never said anything about email verification or OTP on login. I genuinely did not know if that was expected or out of scope. I made the call that it was not required for core functionality and proceeded with basic email and password auth. But if the answer had been the opposite, the system would look very different. Registration would need an unverified state, a verification token stored in the database with an expiry, an email provider integration and a confirmation step before the user can log in. The entire onboarding flow changes. I documented it as a question I would have asked rather than assuming it away silently.
 
 ---
 
@@ -48,15 +55,15 @@ Browsers cannot speak native gRPC. Rather than configuring an Envoy proxy, which
 
 ### Interceptor Chain Order
 
-The gRPC interceptor chain runs in this order: rate limiter, then logging, then auth. The order matters. Rate limiting runs first so abusive requests are rejected before any work is done. Logging runs second so every request is captured regardless of whether auth passes or fails, giving a complete picture of traffic. Auth runs last because it only needs to protect business logic, not the layers before it. Each interceptor has one job and does not need to know about the others.
+The gRPC interceptor chain runs in this order: rate limiter, then logging, then auth. The order matters. Rate limiting runs first so abusive requests are rejected before any work is done. Logging runs second so every request is captured regardless of whether auth passes or fails, giving a complete picture of traffic. Auth runs last because it only needs to protect business logic, not the layers before it. Each interceptor has one job and does not need to know about the others. This is wired in `cmd/server/main.go`.
 
 ### Data Persistence - PostgreSQL
 
-A scheduling system with the possibility of concurrent booking attempts requires high transactional integrity. PostgreSQL's ACID compliance makes this guaranteed. Two requests checking for conflicts simultaneously cannot both succeed. Postgres also supports SELECT FOR UPDATE natively, handles time-based ranges efficiently and enforces relational integrity via foreign keys.
+A scheduling system with the possibility of concurrent booking attempts requires high transactional integrity. PostgreSQL's ACID compliance guarantees this. Two requests checking for conflicts simultaneously cannot both succeed. Postgres also supports SELECT FOR UPDATE natively, handles time-based ranges efficiently and enforces relational integrity via foreign keys.
 
 ### Raw database/sql Over ORM
 
-I chose raw database/sql over an ORM like GORM. For the current scope and scale, it offers explicit transaction control using SELECT FOR UPDATE and full control over query logic. An ORM would abstract the most critical part of the system, making it hard to reason about and review. The tradeoff is verbose row scanning and migration files, both of which are very manageable given the small schema size.
+I chose raw database/sql over an ORM like GORM. For the current scope and scale, it offers explicit transaction control using SELECT FOR UPDATE and full control over query logic. An ORM would abstract the most critical part of the system, making it hard to reason about and review.
 
 ### Shared Schema Multi-Tenancy
 
@@ -70,7 +77,7 @@ Docker Compose packages all three services (PostgreSQL, backend and frontend) in
 
 ## Auth and Security
 
-Authentication and security are non-negotiables regardless of the scope and scale of an application. I prioritised a quick and usable auth strategy while being fully aware of the trade-offs.
+Auth was not something I was willing to skip or half-implement. I made a deliberate set of tradeoffs, picked the simplest approach that was honest about its gaps and documented every one of them.
 
 ### JWT Over Sessions
 
@@ -86,11 +93,11 @@ JWT tokens expire after 24 hours. Short enough to limit exposure if a token is s
 
 ### Email Enumeration
 
-Instead of returning AlreadyExists when a duplicate email is submitted on registration, which leaks information about registered accounts, I return InvalidArgument instead. This makes duplicate emails indistinguishable from any other invalid input, preventing attackers from using the registration endpoint to enumerate valid accounts. The status code itself was the leak, not just the message.
+Instead of returning AlreadyExists when a duplicate email is submitted on registration, which leaks information about registered accounts, I return InvalidArgument instead. This makes duplicate emails indistinguishable from any other invalid input, preventing attackers from using the registration endpoint to enumerate valid accounts. The status code itself was the leak, not just the message. This is in `internal/auth/service.go` where the pq error code 23505 is caught and mapped to `codes.InvalidArgument`.
 
 ### Rate Limiting
 
-Rate limiting is applied to the Register and Login endpoints only. These are the public attack surface, unauthenticated endpoints vulnerable to brute force and credential stuffing. Authenticated endpoints are already protected by JWT verification, making rate limiting redundant there. The implementation is an in-memory IP-based counter: 10 requests per minute per IP.
+Rate limiting is applied to the Register and Login endpoints only. These are the public attack surface, unauthenticated endpoints vulnerable to brute force and credential stuffing. Authenticated endpoints are already protected by JWT verification, making rate limiting redundant there. The implementation is an in-memory IP-based counter: 10 requests per minute per IP. A known weakness is that users behind a shared IP, like a corporate network or mobile carrier, share the same limit so a busy office could hit the ceiling through normal usage.
 
 ### SQL Injection Protection
 
@@ -108,11 +115,13 @@ Concurrency is the most critical engineering problem in a schedule management sy
 
 ### SELECT FOR UPDATE
 
-All conflict checks run inside a PostgreSQL transaction using SELECT FOR UPDATE. This applies pessimistic locking on the user's appointment rows for the duration of the conflict check and insert. Any concurrent request for the same user is forced to wait until the first transaction commits before proceeding. This makes double booking structurally impossible.
+All conflict checks run inside a PostgreSQL transaction using SELECT FOR UPDATE. This applies pessimistic locking on the user's appointment rows for the duration of the conflict check and insert. Any concurrent request for the same user is forced to wait until the first transaction commits before proceeding.
 
-### Two-Loop Structure for Recurring Appointments
-
-For recurring appointments, all occurrences are conflict-checked before any row is inserted. If one occurrence conflicts, the booking is rejected atomically, preventing partial inserts where some occurrences succeed and others fail.
+```sql
+SELECT id FROM appointments
+WHERE user_id = $1 AND status = 'scheduled'
+FOR UPDATE
+```
 
 ### Idempotency Keys
 
@@ -126,19 +135,23 @@ This approach prioritises strict consistency over throughput. Under simultaneous
 
 ## Appointment Logic
 
-Every decision here was made with data integrity and auditability in mind, principles I consider non-negotiable in any system that manages time-sensitive user commitments.
+The appointment logic is where I was most opinionated. A scheduling system that loses or corrupts booking records is worse than no system at all, so I prioritised correctness over convenience at every decision point here.
 
 ### Cancel Over Delete
 
 Appointments are never hard deleted. When a user cancels, the status is set to cancelled and the record remains permanently. A hard delete leaves no trace of what was booked, when it was booked or why it was removed. Keeping cancelled records means the database always reflects a complete picture of all scheduling activity. This principle is standard in fintech systems where audit trails are not optional.
 
-The WHERE clause enforces two things: user_id ensures ownership so a user cannot cancel another user's appointment, and status = 'scheduled' ensures only active appointments can be cancelled.
-
 ### Three Status Model
 
 Appointments exist in one of three states: scheduled, completed or cancelled.
 
-The completed status is derived lazily. Rather than running a background job or cron task to periodically update expired appointments, the status update happens inside the GetAppointments transaction before results are returned. This means the database always reflects accurate statuses without any infrastructure overhead. The tradeoff is that a completed appointment is only marked in the database when the user next fetches their appointments.
+The completed status is derived lazily. Rather than running a background job or cron task to periodically update expired appointments, the status update happens inside the GetAppointments transaction before results are returned. This means the database always reflects accurate statuses without any infrastructure overhead. The tradeoff is that a completed appointment is only marked in the database when the user next fetches their appointments. If a user never returns to the app, those appointments stay as scheduled in the database forever since the browser has no persistent process to trigger the update without an active request.
+
+```sql
+UPDATE appointments
+SET status = 'completed', updated_at = NOW()
+WHERE user_id = $1 AND status = 'scheduled' AND end_time < NOW()
+```
 
 ### Cancel Restrictions
 
@@ -148,15 +161,17 @@ Only scheduled appointments can be cancelled. If the update query affects zero r
 
 Each occurrence is inserted as a real, independent database row. All occurrences share a recurrence_group_id that links them together. I chose materialization over on-the-fly expansion for one critical reason: it keeps conflict detection and concurrency handling identical for both recurring and non-recurring appointments. Every occurrence is a real, lockable, queryable row with no special cases needed in the conflict detection logic.
 
-If any single occurrence conflicts, the entire transaction is rolled back with no partial inserts. The scope was deliberately limited to weekly recurrence with a maximum of 4 occurrences. This eliminates edge cases around exception handling for individual occurrences and runaway data generation.
+All occurrences are conflict-checked before any row is inserted. If one occurrence conflicts, the entire transaction is rolled back with no partial inserts. Some succeed and others fail is not an acceptable outcome for a booking system. The scope was deliberately limited to weekly recurrence with a maximum of 4 occurrences to prevent runaway data generation while still demonstrating the approach.
 
 ### Cancelled and Rebooked Slot Deduplication
 
-When a user cancels an appointment and books the same slot again, the database correctly holds two rows: the cancelled original and the new scheduled one. Both rows are returned by GetAppointments, which is correct for the audit trail. On the frontend, a filter suppresses the cancelled row from the calendar when an active appointment overlaps the same time range. This keeps the audit trail intact in the database while the calendar only shows what is actually happening. If the slot is never rebooked, the cancelled appointment remains visible as a grey block.
+After building this feature I noticed a problem during testing. When I cancelled an appointment and booked the same slot again, the cancelled block on the calendar was visually overshadowing the new active appointment. Both rows existed correctly in the database which was right for the audit trail, but the calendar was rendering both at the same pixel position.
+
+My first instinct was to filter cancelled appointments out at the backend query level. I stepped back from that because it would silently drop records from the response and break the audit trail the soft delete was designed to preserve. The fix belongs on the frontend. The calendar now runs a two pass filter: it suppresses a cancelled appointment from display only when an active or completed appointment overlaps the exact same time range. If the slot is never rebooked the cancelled block remains visible. The database always returns everything, the UI decides what to show.
 
 ### No Editing
 
-Appointments cannot be edited after creation. This was a deliberate scope decision. Editing introduces complexity: the conflict check must be re-run excluding the current appointment, recurring group members must be handled independently, and the audit trail becomes harder to reason about. The current flow of cancel and rebook keeps the data model clean and the audit trail unambiguous.
+Appointments cannot be edited after creation. This was a deliberate scope decision. Editing introduces complexity: the conflict check must be re-run excluding the current appointment, recurring group members must be handled independently, and the audit trail becomes harder to reason about. The current flow of cancel and rebook keeps the data model clean and the audit trail unambiguous. The user pays a small UX cost but the system stays correct and simple.
 
 ---
 
@@ -170,7 +185,7 @@ Critical paths covered: conflict detection, idempotency hit, recurring occurrenc
 
 ### Test Context Injection - WithUserID
 
-Go's context package uses typed keys to store values, and the auth package's context key is unexported. To inject a user ID in tests without exposing the key itself, I exported a WithUserID helper function. This lets tests set up authenticated context cleanly without the test files needing to reach into unexported internals or live in the auth package just to access the key.
+Go's context package uses typed keys to store values, and the auth package's context key is unexported. To inject a user ID in tests without exposing the key itself, I exported a WithUserID helper function in `internal/auth/middleware.go`. This lets tests set up authenticated context cleanly without the test files needing to reach into unexported internals or live in the auth package just to access the key.
 
 ### bcrypt.MinCost in Tests
 
@@ -188,7 +203,7 @@ Unit tests verify the logic around locking, not the locking behaviour itself. Th
 
 ## Logging
 
-Structured logging uses Go's standard log/slog package with JSON output, making logs compatible with aggregation tools like Datadog or CloudWatch.
+I used Go's standard log/slog package and output JSON. This means the logs can be piped directly into aggregation tools like Datadog or CloudWatch without any parsing configuration on their end.
 
 Logging is intentionally selective. Routine reads like GetAppointments are silent. Only meaningful writes (create, cancel, register) and errors are logged. This keeps logs signal-rich and avoids noise in production.
 
@@ -205,6 +220,8 @@ Form validation uses Zod without react-hook-form. Zod alone was sufficient for t
 The calendar displays appointments in a weekly grid view, the most intuitive representation for time-based scheduling. Appointments are colour coded by status: black for scheduled, blue for completed, grey with strikethrough for cancelled.
 
 Clicking an appointment opens a slide-in detail panel rather than showing an inline cancel button on the appointment block. A small X button on a calendar block is easy to miss and gives no context. The panel shows the full appointment details and the cancel button only when the appointment is still scheduled. Touching anywhere outside the panel closes it.
+
+After building this I found a bug where the cancel button remained active in the panel even after the appointment had already been cancelled. The panel was holding onto the old appointment state. I was relying on React Query to refetch and update the UI but the refetch is asynchronous, so there was a window where the network call was still in flight and the panel was still showing stale data. The fix was passing the updated appointment directly through the onCancelled callback so the panel state updates immediately on success without waiting for a refetch.
 
 All times are displayed in the user's local timezone, converted from UTC on the frontend using the timezone stored at registration.
 
@@ -256,17 +273,17 @@ The order things break under real load is: rate limiter loses state across insta
 
 ## What I Would Do Differently With More Time
 
-**Security** - localStorage replaced with HttpOnly cookies. Short-lived access tokens (15 minutes) with rotating refresh tokens stored in a Redis blacklist. Account lockout after repeated failed login attempts to complement rate limiting.
+**Security** - The localStorage decision was a deliberate shortcut to avoid the CSRF handling and gRPC-gateway header changes that HttpOnly cookies require. Given more time I would make that trade, the XSS risk is real. I would pair it with short-lived access tokens (15 minutes) and rotating refresh tokens in a Redis blacklist so stolen tokens have a very short window. Account lockout after repeated failed logins would sit on top of the existing rate limiting for a more complete defence.
 
-**Architecture** - grpc-gateway replaced with true gRPC-Web and an Envoy proxy, fully honouring the gRPC constraint. Idempotency keys moved to Redis with automatic TTL expiry. Connection pooling handled explicitly with pgxpool. Read replicas separating read and write operations as traffic grows.
+**Architecture** - grpc-gateway was the right call for the time available but it is technically a workaround. The correct production approach is gRPC-Web with an Envoy proxy, which keeps the entire stack speaking native gRPC without a translation layer. Idempotency keys would move from Postgres to Redis with automatic TTL expiry so old keys clean themselves up without a manual purge job. Connection pooling would be tuned explicitly with pgxpool and read replicas would separate GetAppointments queries from write operations as traffic grows.
 
-**Appointments** - Full RRULE recurrence support for daily, monthly and custom intervals. Edit functionality with full conflict re-check on save. Browser timezone auto-detection on login using Intl.DateTimeFormat().resolvedOptions().timeZone. Appointment reminders via email or push notifications.
+**Appointments** - Edit functionality is the most impactful missing feature for users. Right now cancel and rebook works but it feels clunky for something as simple as moving a meeting 30 minutes. Implementing it properly requires re-running the conflict check excluding the current appointment and handling recurring group edits carefully. Browser timezone auto-detection on login using Intl.DateTimeFormat().resolvedOptions().timeZone would replace the manual timezone entry at registration. Full RRULE recurrence support for daily and monthly patterns would be the backend equivalent.
 
-**Testing** - The sqlmock unit test suite replaced with a full integration test suite against a live PostgreSQL instance. E2E tests with Playwright covering complete user flows. Load testing with k6 to verify concurrency handling holds under real concurrent traffic, not just two goroutines but hundreds.
+**Testing** - I would replace the sqlmock unit tests with a full integration suite against a live PostgreSQL instance. The mock tests verify logic but they cannot catch query bugs or index performance issues. Playwright E2E tests would cover the flows I manually tested during development, registration through booking through cancellation. Load testing with k6 would tell me how the SELECT FOR UPDATE locking holds up under hundreds of concurrent requests, not just two goroutines.
 
-**Observability** - A Prometheus metrics endpoint exposing request rates, error rates and conflict rates. A Grafana dashboard for scheduling patterns. Distributed tracing with OpenTelemetry to follow a single request across the entire stack.
+**Observability** - Right now if something goes wrong in production I have JSON logs and nothing else. I would add a Prometheus metrics endpoint tracking conflict rate, booking success rate, request latency per endpoint and failed login attempts. Conflict rate specifically tells you if users are fighting over slots, which is a signal the UX or the available time windows need attention. A Grafana dashboard would surface these patterns visually. OpenTelemetry distributed tracing would let me follow a single slow request from the React frontend through grpc-gateway into the Go service and down to the Postgres query to find exactly where time is being lost.
 
-**Frontend** - A settings page for updating timezone and week start preference after registration. Month and day calendar views. Clicking an empty time slot pre-fills the start time in the create modal. Drag and drop rescheduling.
+**Frontend** - A settings page so users can update their timezone and week start preference without re-registering. Month and day calendar views for different planning contexts. Clicking an empty time slot should pre-fill the start time in the create modal, it is a small detail but it makes the calendar feel like a real scheduling tool rather than a form with a calendar next to it. Drag and drop rescheduling would be the most impactful frontend addition for daily use.
 
 ---
 
@@ -274,10 +291,10 @@ The order things break under real load is: rate limiter loses state across insta
 
 **Multi-user scheduling** - Would users ever need to book appointments with other users, sending invites, confirming attendance, or sharing calendars? I proceeded assuming single-user personal scheduling since no multi-party flow was specified. This assumption significantly shaped the data model: no attendees table, no invite system, no shared availability.
 
-**Notifications** - Should users receive reminders before scheduled appointments via email, push or in-app? Notifications would change the architecture significantly, requiring a background job, a notification service and potentially a third-party provider. I proceeded without notifications and scoped this as a production improvement.
+**Notifications** - Should users receive reminders before scheduled appointments via email, push or in-app? Notifications would change the architecture significantly, requiring a background job, a notification service and potentially a third-party provider like SendGrid. I left it out entirely. Adding it during this assessment without a real email provider would have been tough.
 
 **Recurrence scope** - Beyond weekly repetition, what recurrence patterns does the business need? Daily, monthly, custom intervals? I implemented weekly recurrence with a maximum of 4 occurrences, the simplest subset that demonstrates the concept without the complexity of full RRULE support.
 
-**Data retention** - How long should cancelled or completed appointments be retained? Should old records be purged after a certain period? I proceeded with indefinite retention where no records are ever deleted. In production, a data retention policy would be defined with the business and legal teams.
+**Data retention** - How long should cancelled or completed appointments be retained? Should old records be purged after a certain period? I proceeded with indefinite retention where no records are ever deleted. At scale this becomes a real cost, a user with years of appointment history adds up and without a retention policy the appointments table grows without bound. In production, a data retention policy would be defined with the business and legal teams.
 
-**Conflict definition** - Should back-to-back appointments be allowed or blocked? Should buffer time between appointments be a requirement? I interpreted a conflict as any time overlap and explicitly allowed back-to-back appointments. A stakeholder conversation would have confirmed whether buffer time was a business requirement.
+**Conflict definition** - Should back-to-back appointments be allowed or blocked? Should buffer time between appointments be a requirement? I interpreted a conflict as any time overlap and explicitly allowed back-to-back appointments. That is one question I would not have shipped without an answer in a real product.
