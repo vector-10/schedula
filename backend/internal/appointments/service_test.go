@@ -322,3 +322,238 @@ func TestCancelAppointment_MissingID(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, codes.InvalidArgument, status.Code(err))
 }
+
+func TestCancelAppointment_Unauthenticated(t *testing.T) {
+	svc, _ := newTestService(t)
+
+	_, err := svc.CancelAppointment(context.Background(), &gen.CancelAppointmentRequest{
+		AppointmentId: "appt-1",
+	})
+
+	require.Error(t, err)
+	assert.Equal(t, codes.Unauthenticated, status.Code(err))
+}
+
+func TestGetAppointments_Unauthenticated(t *testing.T) {
+	svc, _ := newTestService(t)
+
+	_, err := svc.GetAppointments(context.Background(), &gen.GetAppointmentsRequest{})
+
+	require.Error(t, err)
+	assert.Equal(t, codes.Unauthenticated, status.Code(err))
+}
+
+func TestCreateAppointment_MissingTimes(t *testing.T) {
+	svc, mock := newTestService(t)
+	expectTimezone(mock)
+
+	_, err := svc.CreateAppointment(ctxWithUser("user-123"), &gen.CreateAppointmentRequest{
+		Title:          "Test",
+		IdempotencyKey: "key-1",
+	})
+
+	require.Error(t, err)
+	assert.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+func TestCreateAppointment_MissingIdempotencyKey(t *testing.T) {
+	svc, mock := newTestService(t)
+	start, end := futureSlot()
+	expectTimezone(mock)
+
+	_, err := svc.CreateAppointment(ctxWithUser("user-123"), &gen.CreateAppointmentRequest{
+		Title:     "Test",
+		StartTime: timestamppb.New(start),
+		EndTime:   timestamppb.New(end),
+	})
+
+	require.Error(t, err)
+	assert.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+func TestCreateAppointment_UnsupportedRecurrenceRule(t *testing.T) {
+	svc, mock := newTestService(t)
+	start, end := futureSlot()
+	expectTimezone(mock)
+	expectNoIdempotencyKey(mock)
+
+	_, err := svc.CreateAppointment(ctxWithUser("user-123"), &gen.CreateAppointmentRequest{
+		Title:          "Test",
+		StartTime:      timestamppb.New(start),
+		EndTime:        timestamppb.New(end),
+		IdempotencyKey: "key-1",
+		RecurrenceRule: "DAILY",
+	})
+
+	require.Error(t, err)
+	assert.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+func TestCreateAppointment_RecurrenceMissingEndDate(t *testing.T) {
+	svc, mock := newTestService(t)
+	start, end := futureSlot()
+	expectTimezone(mock)
+	expectNoIdempotencyKey(mock)
+
+	_, err := svc.CreateAppointment(ctxWithUser("user-123"), &gen.CreateAppointmentRequest{
+		Title:          "Test",
+		StartTime:      timestamppb.New(start),
+		EndTime:        timestamppb.New(end),
+		IdempotencyKey: "key-1",
+		RecurrenceRule: "WEEKLY",
+	})
+
+	require.Error(t, err)
+	assert.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+func TestCreateAppointment_RecurrenceTooManyOccurrences(t *testing.T) {
+	svc, mock := newTestService(t)
+	start, end := futureSlot()
+	expectTimezone(mock)
+	expectNoIdempotencyKey(mock)
+
+	_, err := svc.CreateAppointment(ctxWithUser("user-123"), &gen.CreateAppointmentRequest{
+		Title:             "Test",
+		StartTime:         timestamppb.New(start),
+		EndTime:           timestamppb.New(end),
+		IdempotencyKey:    "key-1",
+		RecurrenceRule:    "WEEKLY",
+		RecurrenceEndDate: timestamppb.New(start.AddDate(0, 0, 60)),
+	})
+
+	require.Error(t, err)
+	assert.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+func TestCreateAppointment_TimezoneFetchError(t *testing.T) {
+	svc, mock := newTestService(t)
+	start, end := futureSlot()
+
+	mock.ExpectQuery("SELECT timezone FROM users").
+		WillReturnError(sql.ErrConnDone)
+
+	_, err := svc.CreateAppointment(ctxWithUser("user-123"), &gen.CreateAppointmentRequest{
+		Title:          "Test",
+		StartTime:      timestamppb.New(start),
+		EndTime:        timestamppb.New(end),
+		IdempotencyKey: "key-1",
+	})
+
+	require.Error(t, err)
+	assert.Equal(t, codes.Internal, status.Code(err))
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestCreateAppointment_LockError(t *testing.T) {
+	svc, mock := newTestService(t)
+	start, end := futureSlot()
+
+	expectTimezone(mock)
+	expectNoIdempotencyKey(mock)
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT id FROM appointments").
+		WillReturnError(sql.ErrConnDone)
+	mock.ExpectRollback()
+
+	_, err := svc.CreateAppointment(ctxWithUser("user-123"), &gen.CreateAppointmentRequest{
+		Title:          "Test",
+		StartTime:      timestamppb.New(start),
+		EndTime:        timestamppb.New(end),
+		IdempotencyKey: "key-1",
+	})
+
+	require.Error(t, err)
+	assert.Equal(t, codes.Internal, status.Code(err))
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestCreateAppointment_ConflictCheckDBError(t *testing.T) {
+	svc, mock := newTestService(t)
+	start, end := futureSlot()
+
+	expectTimezone(mock)
+	expectNoIdempotencyKey(mock)
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT id FROM appointments").
+		WillReturnRows(sqlmock.NewRows([]string{"id"}))
+	mock.ExpectQuery("SELECT start_time FROM appointments").
+		WillReturnError(sql.ErrConnDone)
+	mock.ExpectRollback()
+
+	_, err := svc.CreateAppointment(ctxWithUser("user-123"), &gen.CreateAppointmentRequest{
+		Title:          "Test",
+		StartTime:      timestamppb.New(start),
+		EndTime:        timestamppb.New(end),
+		IdempotencyKey: "key-1",
+	})
+
+	require.Error(t, err)
+	assert.Equal(t, codes.Internal, status.Code(err))
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestGetAppointments_UserQueryError(t *testing.T) {
+	svc, mock := newTestService(t)
+
+	mock.ExpectQuery("SELECT timezone, week_start FROM users").
+		WillReturnError(sql.ErrConnDone)
+
+	_, err := svc.GetAppointments(ctxWithUser("user-123"), &gen.GetAppointmentsRequest{})
+
+	require.Error(t, err)
+	assert.Equal(t, codes.Internal, status.Code(err))
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestGetAppointments_UpdateError(t *testing.T) {
+	svc, mock := newTestService(t)
+
+	mock.ExpectQuery("SELECT timezone, week_start FROM users").
+		WillReturnRows(sqlmock.NewRows([]string{"timezone", "week_start"}).AddRow("UTC", "monday"))
+	mock.ExpectBegin()
+	mock.ExpectExec("UPDATE appointments SET status = 'completed'").
+		WillReturnError(sql.ErrConnDone)
+	mock.ExpectRollback()
+
+	_, err := svc.GetAppointments(ctxWithUser("user-123"), &gen.GetAppointmentsRequest{})
+
+	require.Error(t, err)
+	assert.Equal(t, codes.Internal, status.Code(err))
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestCancelAppointment_DBError(t *testing.T) {
+	svc, mock := newTestService(t)
+
+	mock.ExpectExec("UPDATE appointments SET status = 'cancelled'").
+		WillReturnError(sql.ErrConnDone)
+
+	_, err := svc.CancelAppointment(ctxWithUser("user-123"), &gen.CancelAppointmentRequest{
+		AppointmentId: "appt-1",
+	})
+
+	require.Error(t, err)
+	assert.Equal(t, codes.Internal, status.Code(err))
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestToProto_WithDescriptionAndRecurrenceGroup(t *testing.T) {
+	row := &appointmentRow{
+		id:                "appt-1",
+		userID:            "user-1",
+		title:             "Meeting",
+		description:       sql.NullString{String: "desc", Valid: true},
+		recurrenceGroupID: sql.NullString{String: "group-1", Valid: true},
+		status:            "scheduled",
+		startTime:         time.Now(),
+		endTime:           time.Now().Add(time.Hour),
+		createdAt:         time.Now(),
+		updatedAt:         time.Now(),
+	}
+
+	proto := row.toProto()
+
+	assert.Equal(t, "desc", proto.Description)
+	assert.Equal(t, "group-1", proto.RecurrenceGroupId)
+}

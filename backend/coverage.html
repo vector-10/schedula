@@ -1,0 +1,707 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>appointments: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">github.com/vector-10/schedula/backend/internal/appointments/service.go (85.6%)</option>
+				
+				<option value="file1">github.com/vector-10/schedula/backend/internal/auth/middleware.go (11.5%)</option>
+				
+				<option value="file2">github.com/vector-10/schedula/backend/internal/auth/service.go (90.4%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package appointments
+
+import (
+        "context"
+        "database/sql"
+        "fmt"
+        "log/slog"
+        "time"
+
+        "github.com/google/uuid"
+        "github.com/lib/pq"
+        gen "github.com/vector-10/schedula/backend/gen"
+        "github.com/vector-10/schedula/backend/internal/auth"
+        "google.golang.org/grpc/codes"
+        "google.golang.org/grpc/status"
+        "google.golang.org/protobuf/types/known/timestamppb"
+)
+
+type Service struct {
+        gen.UnimplementedAppointmentServiceServer
+        db *sql.DB
+}
+
+func NewService(db *sql.DB) *Service <span class="cov8" title="1">{
+        return &amp;Service{db: db}
+}</span>
+
+func internalErr(msg string, err error) error <span class="cov0" title="0">{
+        slog.Error(msg, "error", err)
+        return status.Error(codes.Internal, msg)
+}</span>
+
+type scanner interface {
+        Scan(dest ...any) error
+}
+
+type appointmentRow struct {
+        id                string
+        userID            string
+        title             string
+        description       sql.NullString
+        startTime         time.Time
+        endTime           time.Time
+        status            string
+        recurrenceGroupID sql.NullString
+        createdAt         time.Time
+        updatedAt         time.Time
+}
+
+func (r *appointmentRow) scan(s scanner) error <span class="cov8" title="1">{
+        return s.Scan(
+                &amp;r.id, &amp;r.userID, &amp;r.title, &amp;r.description,
+                &amp;r.startTime, &amp;r.endTime, &amp;r.status,
+                &amp;r.recurrenceGroupID, &amp;r.createdAt, &amp;r.updatedAt,
+        )
+}</span>
+
+func (r *appointmentRow) toProto() *gen.Appointment <span class="cov8" title="1">{
+        a := &amp;gen.Appointment{
+                Id:        r.id,
+                UserId:    r.userID,
+                Title:     r.title,
+                Status:    r.status,
+                StartTime: timestamppb.New(r.startTime),
+                EndTime:   timestamppb.New(r.endTime),
+                CreatedAt: timestamppb.New(r.createdAt),
+                UpdatedAt: timestamppb.New(r.updatedAt),
+        }
+        if r.description.Valid </span><span class="cov8" title="1">{
+                a.Description = r.description.String
+        }</span>
+        <span class="cov8" title="1">if r.recurrenceGroupID.Valid </span><span class="cov8" title="1">{
+                a.RecurrenceGroupId = r.recurrenceGroupID.String
+        }</span>
+        <span class="cov8" title="1">return a</span>
+}
+
+type occurrence struct {
+        startTime time.Time
+        endTime   time.Time
+}
+
+func (s *Service) CreateAppointment(ctx context.Context, req *gen.CreateAppointmentRequest) (*gen.CreateAppointmentResponse, error) <span class="cov8" title="1">{
+        userID := auth.GetUserIDFromContext(ctx)
+        if userID == "" </span><span class="cov8" title="1">{
+                return nil, status.Error(codes.Unauthenticated, "not authenticated")
+        }</span>
+
+        <span class="cov8" title="1">var userTimezone string
+        if err := s.db.QueryRowContext(ctx, `SELECT timezone FROM users WHERE id = $1`, userID).Scan(&amp;userTimezone); err != nil </span><span class="cov0" title="0">{
+                return nil, internalErr("failed to get user timezone", err)
+        }</span>
+        <span class="cov8" title="1">loc, err := time.LoadLocation(userTimezone)
+        if err != nil </span><span class="cov0" title="0">{
+                loc = time.UTC
+        }</span>
+
+        <span class="cov8" title="1">if req.Title == "" </span><span class="cov8" title="1">{
+                return nil, status.Error(codes.InvalidArgument, "title is required")
+        }</span>
+        <span class="cov8" title="1">if req.StartTime == nil || req.EndTime == nil </span><span class="cov8" title="1">{
+                return nil, status.Error(codes.InvalidArgument, "start_time and end_time are required")
+        }</span>
+        <span class="cov8" title="1">if req.IdempotencyKey == "" </span><span class="cov8" title="1">{
+                return nil, status.Error(codes.InvalidArgument, "idempotency_key is required")
+        }</span>
+
+        <span class="cov8" title="1">startTime := req.StartTime.AsTime()
+        endTime := req.EndTime.AsTime()
+
+        if !endTime.After(startTime) </span><span class="cov8" title="1">{
+                return nil, status.Error(codes.InvalidArgument, "end_time must be after start_time")
+        }</span>
+
+        <span class="cov8" title="1">if resp, err := s.checkIdempotency(ctx, req.IdempotencyKey, userID); err == nil </span><span class="cov8" title="1">{
+                return resp, nil
+        }</span>
+
+        <span class="cov8" title="1">occurrences := []occurrence{{startTime, endTime}}
+        duration := endTime.Sub(startTime)
+
+        if req.RecurrenceRule != "" </span><span class="cov8" title="1">{
+                if req.RecurrenceRule != "WEEKLY" </span><span class="cov8" title="1">{
+                        return nil, status.Error(codes.InvalidArgument, "only WEEKLY recurrence is supported")
+                }</span>
+                <span class="cov8" title="1">if req.RecurrenceEndDate == nil </span><span class="cov8" title="1">{
+                        return nil, status.Error(codes.InvalidArgument, "recurrence_end_date is required for recurring appointments")
+                }</span>
+
+                <span class="cov8" title="1">endDate := req.RecurrenceEndDate.AsTime()
+                current := startTime
+
+                for </span><span class="cov8" title="1">{
+                        next := current.AddDate(0, 0, 7)
+                        if next.After(endDate) </span><span class="cov8" title="1">{
+                                break</span>
+                        }
+                        <span class="cov8" title="1">occurrences = append(occurrences, occurrence{next, next.Add(duration)})
+                        current = next
+                        if len(occurrences) &gt; 4 </span><span class="cov8" title="1">{
+                                return nil, status.Error(codes.InvalidArgument,
+                                        "recurrence rule would generate more than 4 occurrences; shorten recurrence_end_date")
+                        }</span>
+                }
+        }
+
+        <span class="cov8" title="1">tx, err := s.db.BeginTx(ctx, nil)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, internalErr("failed to begin transaction", err)
+        }</span>
+        <span class="cov8" title="1">defer tx.Rollback()
+
+        lockRows, err := tx.QueryContext(ctx, `
+                SELECT id FROM appointments
+                WHERE user_id = $1 AND status = 'scheduled'
+                FOR UPDATE
+        `, userID)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, internalErr("failed to acquire lock", err)
+        }</span>
+        <span class="cov8" title="1">lockRows.Close()
+
+        for _, occ := range occurrences </span><span class="cov8" title="1">{
+                var conflictStart time.Time
+                err := tx.QueryRowContext(ctx, `
+                        SELECT start_time FROM appointments
+                        WHERE user_id    = $1
+                          AND status     = 'scheduled'
+                          AND start_time &lt; $3
+                          AND end_time   &gt; $2
+                        LIMIT 1
+                `, userID, occ.startTime, occ.endTime).Scan(&amp;conflictStart)
+
+                if err == nil </span><span class="cov8" title="1">{
+                        return nil, status.Errorf(codes.AlreadyExists,
+                                "appointment on %s conflicts with an existing appointment at %s",
+                                occ.startTime.In(loc).Format("2006-01-02 15:04 MST"),
+                                conflictStart.In(loc).Format("2006-01-02 15:04 MST"),
+                        )
+                }</span>
+                <span class="cov8" title="1">if err != sql.ErrNoRows </span><span class="cov0" title="0">{
+                        return nil, internalErr("conflict check failed", err)
+                }</span>
+        }
+
+        <span class="cov8" title="1">var recurrenceGroupID *string
+        if len(occurrences) &gt; 1 </span><span class="cov8" title="1">{
+                id := uuid.New().String()
+                recurrenceGroupID = &amp;id
+        }</span>
+
+        <span class="cov8" title="1">now := time.Now().UTC()
+        appointmentIDs := make([]string, 0, len(occurrences))
+        appointments := make([]*gen.Appointment, 0, len(occurrences))
+
+        for _, occ := range occurrences </span><span class="cov8" title="1">{
+                apptID := uuid.New().String()
+
+                _, err = tx.ExecContext(ctx, `
+                        INSERT INTO appointments
+                                (id, user_id, title, description, start_time, end_time, status, recurrence_group_id, created_at, updated_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, 'scheduled', $7, $8, $9)
+                `,
+                        apptID, userID, req.Title,
+                        sql.NullString{String: req.Description, Valid: req.Description != ""},
+                        occ.startTime.UTC(), occ.endTime.UTC(),
+                        recurrenceGroupID, now, now,
+                )
+                if err != nil </span><span class="cov0" title="0">{
+                        return nil, internalErr("failed to insert appointment", err)
+                }</span>
+
+                <span class="cov8" title="1">a := &amp;gen.Appointment{
+                        Id:          apptID,
+                        UserId:      userID,
+                        Title:       req.Title,
+                        Description: req.Description,
+                        StartTime:   timestamppb.New(occ.startTime),
+                        EndTime:     timestamppb.New(occ.endTime),
+                        Status:      "scheduled",
+                        CreatedAt:   timestamppb.New(now),
+                        UpdatedAt:   timestamppb.New(now),
+                }
+                if recurrenceGroupID != nil </span><span class="cov8" title="1">{
+                        a.RecurrenceGroupId = *recurrenceGroupID
+                }</span>
+                <span class="cov8" title="1">appointments = append(appointments, a)
+                appointmentIDs = append(appointmentIDs, apptID)</span>
+        }
+
+        <span class="cov8" title="1">_, err = tx.ExecContext(ctx, `
+                INSERT INTO idempotency_keys (key, user_id, appointment_ids, created_at)
+                VALUES ($1, $2, $3, NOW())
+                ON CONFLICT (key, user_id) DO NOTHING
+        `, req.IdempotencyKey, userID, pq.Array(appointmentIDs))
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, internalErr("failed to store idempotency key", err)
+        }</span>
+
+        <span class="cov8" title="1">if err := tx.Commit(); err != nil </span><span class="cov0" title="0">{
+                return nil, internalErr("failed to commit transaction", err)
+        }</span>
+
+        <span class="cov8" title="1">slog.Info("appointment created", "user_id", userID, "count", len(appointments))
+        return &amp;gen.CreateAppointmentResponse{Appointments: appointments}, nil</span>
+}
+
+func (s *Service) GetAppointments(ctx context.Context, _ *gen.GetAppointmentsRequest) (*gen.GetAppointmentsResponse, error) <span class="cov8" title="1">{
+        userID := auth.GetUserIDFromContext(ctx)
+        if userID == "" </span><span class="cov8" title="1">{
+                return nil, status.Error(codes.Unauthenticated, "not authenticated")
+        }</span>
+
+        <span class="cov8" title="1">var timezone, weekStart string
+        if err := s.db.QueryRowContext(ctx, `SELECT timezone, week_start FROM users WHERE id = $1`, userID).Scan(&amp;timezone, &amp;weekStart); err != nil </span><span class="cov0" title="0">{
+                return nil, internalErr("failed to get user preferences", err)
+        }</span>
+
+        <span class="cov8" title="1">tx, err := s.db.BeginTx(ctx, nil)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, internalErr("failed to begin transaction", err)
+        }</span>
+        <span class="cov8" title="1">defer tx.Rollback()
+
+        _, err = tx.ExecContext(ctx, `
+                UPDATE appointments
+                SET    status = 'completed', updated_at = NOW()
+                WHERE  user_id = $1 AND status = 'scheduled' AND end_time &lt; NOW()
+        `, userID)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, internalErr("failed to update completed appointments", err)
+        }</span>
+
+        <span class="cov8" title="1">rows, err := tx.QueryContext(ctx, `
+                SELECT id, user_id, title, description, start_time, end_time,
+                       status, recurrence_group_id, created_at, updated_at
+                FROM   appointments
+                WHERE  user_id = $1
+                ORDER  BY start_time ASC
+        `, userID)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, internalErr("failed to query appointments", err)
+        }</span>
+        <span class="cov8" title="1">defer rows.Close()
+
+        appointments := make([]*gen.Appointment, 0)
+        for rows.Next() </span><span class="cov8" title="1">{
+                var row appointmentRow
+                if err := row.scan(rows); err != nil </span><span class="cov0" title="0">{
+                        return nil, internalErr("failed to scan appointment", err)
+                }</span>
+                <span class="cov8" title="1">appointments = append(appointments, row.toProto())</span>
+        }
+        <span class="cov8" title="1">if err := rows.Err(); err != nil </span><span class="cov0" title="0">{
+                return nil, internalErr("row iteration error", err)
+        }</span>
+
+        <span class="cov8" title="1">if err := tx.Commit(); err != nil </span><span class="cov0" title="0">{
+                return nil, internalErr("failed to commit transaction", err)
+        }</span>
+
+        <span class="cov8" title="1">return &amp;gen.GetAppointmentsResponse{
+                Appointments: appointments,
+                UserTimezone: timezone,
+                WeekStart:    weekStart,
+        }, nil</span>
+}
+
+func (s *Service) CancelAppointment(ctx context.Context, req *gen.CancelAppointmentRequest) (*gen.CancelAppointmentResponse, error) <span class="cov8" title="1">{
+        userID := auth.GetUserIDFromContext(ctx)
+        if userID == "" </span><span class="cov8" title="1">{
+                return nil, status.Error(codes.Unauthenticated, "not authenticated")
+        }</span>
+
+        <span class="cov8" title="1">if req.AppointmentId == "" </span><span class="cov8" title="1">{
+                return nil, status.Error(codes.InvalidArgument, "appointment_id is required")
+        }</span>
+
+        <span class="cov8" title="1">result, err := s.db.ExecContext(ctx, `
+                UPDATE appointments
+                SET    status = 'cancelled', updated_at = NOW()
+                WHERE  id = $1 AND user_id = $2 AND status = 'scheduled'
+        `, req.AppointmentId, userID)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, internalErr("failed to cancel appointment", err)
+        }</span>
+
+        <span class="cov8" title="1">n, _ := result.RowsAffected()
+        if n == 0 </span><span class="cov8" title="1">{
+                return nil, status.Error(codes.NotFound, "appointment not found, already cancelled, or completed")
+        }</span>
+
+        <span class="cov8" title="1">var row appointmentRow
+        if err := row.scan(s.db.QueryRowContext(ctx, `
+                SELECT id, user_id, title, description, start_time, end_time,
+                       status, recurrence_group_id, created_at, updated_at
+                FROM   appointments WHERE id = $1
+        `, req.AppointmentId)); err != nil </span><span class="cov0" title="0">{
+                return nil, internalErr("failed to fetch cancelled appointment", err)
+        }</span>
+
+        <span class="cov8" title="1">slog.Info("appointment cancelled", "user_id", userID, "appointment_id", req.AppointmentId)
+        return &amp;gen.CancelAppointmentResponse{Appointment: row.toProto()}, nil</span>
+}
+
+func (s *Service) checkIdempotency(ctx context.Context, key, userID string) (*gen.CreateAppointmentResponse, error) <span class="cov8" title="1">{
+        var appointmentIDs []string
+        err := s.db.QueryRowContext(ctx, `
+                SELECT appointment_ids FROM idempotency_keys WHERE key = $1 AND user_id = $2
+        `, key, userID).Scan(pq.Array(&amp;appointmentIDs))
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, err
+        }</span>
+
+        <span class="cov8" title="1">rows, err := s.db.QueryContext(ctx, `
+                SELECT id, user_id, title, description, start_time, end_time,
+                       status, recurrence_group_id, created_at, updated_at
+                FROM   appointments
+                WHERE  id = ANY($1::uuid[])
+                ORDER  BY start_time ASC
+        `, pq.Array(appointmentIDs))
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">defer rows.Close()
+
+        appointments := make([]*gen.Appointment, 0)
+        for rows.Next() </span><span class="cov8" title="1">{
+                var row appointmentRow
+                if err := row.scan(rows); err != nil </span><span class="cov0" title="0">{
+                        return nil, fmt.Errorf("scan: %w", err)
+                }</span>
+                <span class="cov8" title="1">appointments = append(appointments, row.toProto())</span>
+        }
+
+        <span class="cov8" title="1">return &amp;gen.CreateAppointmentResponse{Appointments: appointments}, nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">package auth
+
+import (
+        "context"
+        "strings"
+
+        "github.com/golang-jwt/jwt/v5"
+        "google.golang.org/grpc"
+        "google.golang.org/grpc/codes"
+        "google.golang.org/grpc/metadata"
+        "google.golang.org/grpc/status"
+)
+
+type contextKey string
+
+const userIDKey contextKey = "userID"
+
+var publicMethods = map[string]bool{
+        "/schedula.v1.AuthService/Register": true,
+        "/schedula.v1.AuthService/Login":    true,
+}
+
+type Middleware struct {
+        jwtSecret string
+}
+
+func NewMiddleware(jwtSecret string) *Middleware <span class="cov0" title="0">{
+        return &amp;Middleware{jwtSecret: jwtSecret}
+}</span>
+
+func (m *Middleware) UnaryInterceptor() grpc.UnaryServerInterceptor <span class="cov0" title="0">{
+        return func(
+                ctx context.Context,
+                req interface{},
+                info *grpc.UnaryServerInfo,
+                handler grpc.UnaryHandler,
+        ) (interface{}, error) </span><span class="cov0" title="0">{
+                if publicMethods[info.FullMethod] </span><span class="cov0" title="0">{
+                        return handler(ctx, req)
+                }</span>
+
+                <span class="cov0" title="0">md, ok := metadata.FromIncomingContext(ctx)
+                if !ok </span><span class="cov0" title="0">{
+                        return nil, status.Error(codes.Unauthenticated, "missing metadata")
+                }</span>
+
+                <span class="cov0" title="0">values := md.Get("authorization")
+                if len(values) == 0 </span><span class="cov0" title="0">{
+                        return nil, status.Error(codes.Unauthenticated, "missing authorization header")
+                }</span>
+
+                <span class="cov0" title="0">tokenStr := strings.TrimPrefix(values[0], "Bearer ")
+
+                claims := jwt.MapClaims{}
+                token, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (interface{}, error) </span><span class="cov0" title="0">{
+                        if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok </span><span class="cov0" title="0">{
+                                return nil, status.Error(codes.Unauthenticated, "unexpected signing method")
+                        }</span>
+                        <span class="cov0" title="0">return []byte(m.jwtSecret), nil</span>
+                })
+                <span class="cov0" title="0">if err != nil || !token.Valid </span><span class="cov0" title="0">{
+                        return nil, status.Error(codes.Unauthenticated, "invalid token")
+                }</span>
+
+                <span class="cov0" title="0">userID, ok := claims["sub"].(string)
+                if !ok || userID == "" </span><span class="cov0" title="0">{
+                        return nil, status.Error(codes.Unauthenticated, "invalid token claims")
+                }</span>
+
+                <span class="cov0" title="0">ctx = context.WithValue(ctx, userIDKey, userID)
+                return handler(ctx, req)</span>
+        }
+}
+
+func GetUserIDFromContext(ctx context.Context) string <span class="cov8" title="1">{
+        userID, _ := ctx.Value(userIDKey).(string)
+        return userID
+}</span>
+
+func WithUserID(ctx context.Context, userID string) context.Context <span class="cov8" title="1">{
+        return context.WithValue(ctx, userIDKey, userID)
+}</span>
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">package auth
+
+import (
+        "context"
+        "database/sql"
+        "log/slog"
+        "time"
+
+        "github.com/golang-jwt/jwt/v5"
+        "github.com/lib/pq"
+        gen "github.com/vector-10/schedula/backend/gen"
+        "golang.org/x/crypto/bcrypt"
+        "google.golang.org/grpc/codes"
+        "google.golang.org/grpc/status"
+)
+
+func internalErr(msg string, err error) error <span class="cov8" title="1">{
+        slog.Error(msg, "error", err)
+        return status.Error(codes.Internal, msg)
+}</span>
+
+type Service struct {
+        gen.UnimplementedAuthServiceServer
+        db        *sql.DB
+        jwtSecret string
+}
+
+func NewService(db *sql.DB, jwtSecret string) *Service <span class="cov8" title="1">{
+        return &amp;Service{db: db, jwtSecret: jwtSecret}
+}</span>
+
+func (s *Service) Register(ctx context.Context, req *gen.RegisterRequest) (*gen.RegisterResponse, error) <span class="cov8" title="1">{
+        if req.Email == "" || req.Password == "" || req.Timezone == "" </span><span class="cov8" title="1">{
+                return nil, status.Error(codes.InvalidArgument, "email, password, and timezone are required")
+        }</span>
+        <span class="cov8" title="1">if req.FirstName == "" || req.LastName == "" </span><span class="cov8" title="1">{
+                return nil, status.Error(codes.InvalidArgument, "first_name and last_name are required")
+        }</span>
+        <span class="cov8" title="1">if req.WeekStart == "" </span><span class="cov0" title="0">{
+                req.WeekStart = "monday"
+        }</span>
+        <span class="cov8" title="1">if req.WeekStart != "monday" &amp;&amp; req.WeekStart != "sunday" </span><span class="cov8" title="1">{
+                return nil, status.Error(codes.InvalidArgument, "week_start must be 'monday' or 'sunday'")
+        }</span>
+
+        <span class="cov8" title="1">hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, internalErr("failed to hash password", err)
+        }</span>
+
+        <span class="cov8" title="1">var userID string
+        err = s.db.QueryRowContext(ctx, `
+                INSERT INTO users (email, password_hash, timezone, week_start, first_name, last_name, created_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                RETURNING id
+        `, req.Email, string(hash), req.Timezone, req.WeekStart, req.FirstName, req.LastName, time.Now().UTC()).Scan(&amp;userID)
+        if err != nil </span><span class="cov8" title="1">{
+                if pqErr, ok := err.(*pq.Error); ok &amp;&amp; pqErr.Code == "23505" </span><span class="cov8" title="1">{
+                        return nil, status.Error(codes.InvalidArgument, "invalid credentials")
+                }</span>
+                <span class="cov8" title="1">return nil, internalErr("failed to create user", err)</span>
+        }
+
+        <span class="cov8" title="1">token, err := s.generateToken(userID)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, internalErr("failed to generate token", err)
+        }</span>
+
+        <span class="cov8" title="1">slog.Info("user registered", "user_id", userID)
+        return &amp;gen.RegisterResponse{Token: token, UserId: userID}, nil</span>
+}
+
+func (s *Service) Login(ctx context.Context, req *gen.LoginRequest) (*gen.LoginResponse, error) <span class="cov8" title="1">{
+        if req.Email == "" || req.Password == "" </span><span class="cov8" title="1">{
+                return nil, status.Error(codes.InvalidArgument, "email and password are required")
+        }</span>
+
+        <span class="cov8" title="1">var userID, passwordHash string
+        err := s.db.QueryRowContext(ctx, `
+                SELECT id, password_hash FROM users WHERE email = $1
+        `, req.Email).Scan(&amp;userID, &amp;passwordHash)
+        if err == sql.ErrNoRows </span><span class="cov8" title="1">{
+                return nil, status.Error(codes.Unauthenticated, "invalid credentials")
+        }</span>
+        <span class="cov8" title="1">if err != nil </span><span class="cov8" title="1">{
+                return nil, internalErr("failed to query user", err)
+        }</span>
+
+        <span class="cov8" title="1">if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(req.Password)); err != nil </span><span class="cov8" title="1">{
+                return nil, status.Error(codes.Unauthenticated, "invalid credentials")
+        }</span>
+
+        <span class="cov8" title="1">token, err := s.generateToken(userID)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, internalErr("failed to generate token", err)
+        }</span>
+
+        <span class="cov8" title="1">return &amp;gen.LoginResponse{Token: token, UserId: userID}, nil</span>
+}
+
+func (s *Service) GetProfile(ctx context.Context, _ *gen.GetProfileRequest) (*gen.GetProfileResponse, error) <span class="cov8" title="1">{
+        userID := GetUserIDFromContext(ctx)
+        if userID == "" </span><span class="cov8" title="1">{
+                return nil, status.Error(codes.Unauthenticated, "not authenticated")
+        }</span>
+
+        <span class="cov8" title="1">var profile gen.GetProfileResponse
+        err := s.db.QueryRowContext(ctx, `
+                SELECT id, email, first_name, last_name, timezone, week_start
+                FROM users WHERE id = $1
+        `, userID).Scan(
+                &amp;profile.Id,
+                &amp;profile.Email,
+                &amp;profile.FirstName,
+                &amp;profile.LastName,
+                &amp;profile.Timezone,
+                &amp;profile.WeekStart,
+        )
+        if err == sql.ErrNoRows </span><span class="cov8" title="1">{
+                return nil, status.Error(codes.NotFound, "user not found")
+        }</span>
+        <span class="cov8" title="1">if err != nil </span><span class="cov0" title="0">{
+                return nil, internalErr("failed to get profile", err)
+        }</span>
+
+        <span class="cov8" title="1">return &amp;profile, nil</span>
+}
+
+func (s *Service) generateToken(userID string) (string, error) <span class="cov8" title="1">{
+        claims := jwt.MapClaims{
+                "sub": userID,
+                "exp": time.Now().Add(24 * time.Hour).Unix(),
+                "iat": time.Now().Unix(),
+        }
+        token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+        return token.SignedString([]byte(s.jwtSecret))
+}</span>
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>

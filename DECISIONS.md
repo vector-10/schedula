@@ -79,7 +79,7 @@ The gRPC interceptor chain runs in this order: rate limiter, then logging, then 
 
 ### Data Persistence - PostgreSQL
 
-A scheduling system with the possibility of concurrent booking attempts requires high transactional integrity. PostgreSQL's ACID compliance guarantees this. Two requests checking for conflicts simultaneously cannot both succeed. Postgres also supports SELECT FOR UPDATE natively, handles time-based ranges efficiently and enforces relational integrity via foreign keys.
+A scheduling system with the possibility of concurrent booking attempts requires high transactional integrity. PostgreSQL guarantees that two things cannot happen at the same time if they would break the data. A transaction either completes fully or not at all. Two requests checking for the same slot simultaneously cannot both see it as free. If something fails halfway through, the database rolls back as if nothing happened. This is what makes it the right choice for a system where a double booking is the worst possible outcome. Postgres also supports SELECT FOR UPDATE natively, handles time-based ranges efficiently and enforces relational integrity via foreign keys.
 
 ### Raw database/sql Over ORM
 
@@ -101,11 +101,11 @@ Auth was not something I was willing to skip or half-implement. I made a deliber
 
 ### JWT Over Sessions
 
-Sessions require a store and cookies, both of which are incompatible with gRPC metadata transport. JWT tokens are stateless, passed via gRPC metadata on every request and verified without a database lookup. The tradeoff is that tokens cannot be invalidated before expiry without a token blacklist. In production, short-lived tokens with refresh token rotation and a Redis blacklist would address this.
+With session-based auth, the server creates a session when a user logs in and stores it somewhere, a database or Redis. The user gets a session ID in a cookie, and every request carries that cookie so the server can look up who the user is. The problem is gRPC does not use cookies. It passes request metadata in headers, not HTTP cookies. Sending a cookie through gRPC requires extra translation work that adds no real value. JWT sidesteps this entirely. The token is self-contained, it carries the user's identity inside it, and it travels in a gRPC metadata header on every request. The server verifies it using a secret key without any database lookup. The tradeoff is that tokens cannot be invalidated before expiry without a token blacklist. In production, short-lived tokens with refresh token rotation and a Redis blacklist would address this.
 
 ### LocalStorage Over HttpOnly Cookies
 
-JWT tokens are stored in localStorage on the React frontend. This is vulnerable to XSS attacks because any malicious script on the page can read the token. The production alternative is HttpOnly cookies, which are not accessible to JavaScript. I chose localStorage because HttpOnly cookies require additional changes to gRPC-gateway response headers and CSRF token handling. This is a known security gap, documented honestly.
+JWT tokens are stored in localStorage on the React frontend. This is vulnerable to XSS attacks because any malicious script on the page can read the token. The production alternative is HttpOnly cookies. An HttpOnly cookie is one the browser sends automatically with every request but JavaScript cannot read it at all, so a malicious script cannot steal it. The tradeoff is that because the browser sends it automatically, a different kind of attack becomes possible: a malicious site tricks the user's browser into making a request to your API using their cookie without the user knowing. This is called CSRF. Defending against it requires generating a separate token on the server and checking it on every request, which means additional changes to gRPC-gateway response headers. I chose localStorage to avoid that complexity. It is a known security gap, documented honestly.
 
 ### Token Expiry
 
@@ -117,7 +117,7 @@ Instead of returning AlreadyExists when a duplicate email is submitted on regist
 
 ### Rate Limiting
 
-Rate limiting is applied to the Register and Login endpoints only. These are the public attack surface, unauthenticated endpoints vulnerable to brute force and credential stuffing. Authenticated endpoints are already protected by JWT verification, making rate limiting redundant there. The implementation is an in-memory IP-based counter: 10 requests per minute per IP. A known weakness is that users behind a shared IP, like a corporate network or mobile carrier, share the same limit so a busy office could hit the ceiling through normal usage.
+Rate limiting is applied to the Register and Login endpoints only. These are the only endpoints accessible without a token. Brute force means an attacker tries thousands of password combinations on one account. Credential stuffing means an attacker takes a leaked list of emails and passwords from another service and tries each one here, betting that users reused their passwords. Both attacks work by sending a high volume of requests. Rate limiting stops them at the source before they reach the database. Authenticated endpoints are already protected by JWT verification, making rate limiting redundant there. The implementation is an in-memory IP-based counter: 10 requests per minute per IP. A known weakness is that users behind a shared IP, like a corporate network or mobile carrier, share the same limit so a busy office could hit the ceiling through normal usage.
 
 ### SQL Injection Protection
 
@@ -135,7 +135,7 @@ Concurrency is the most critical engineering problem in a schedule management sy
 
 ### SELECT FOR UPDATE
 
-All conflict checks run inside a PostgreSQL transaction using SELECT FOR UPDATE. This applies pessimistic locking on the user's appointment rows for the duration of the conflict check and insert. Any concurrent request for the same user is forced to wait until the first transaction commits before proceeding.
+All conflict checks run inside a PostgreSQL transaction using SELECT FOR UPDATE. The idea is simple: before checking whether a slot is free, lock the rows first. Any other request trying to book for the same user hits that lock and has to wait. It cannot read the rows, check for conflicts, or insert anything until the first request finishes and releases the lock. This means two simultaneous booking attempts cannot both see the slot as free at the same time. One goes through, the other waits, checks again and finds a conflict. This is called pessimistic locking because it assumes a conflict might happen and locks upfront rather than hoping for the best and dealing with the collision after.
 
 ```sql
 SELECT id FROM appointments
@@ -310,7 +310,7 @@ The question is what breaks first when this service runs as multiple instances b
 
 **Logout does not actually work across multiple instances.** Right now, logging out just deletes the token from localStorage on the frontend. The backend has no idea a logout happened. The JWT is still valid until it expires in 24 hours. On a single instance you could store a blacklist in memory, but with multiple instances each has its own memory. A token blacklisted on instance A is still accepted on instance B. The fix is a Redis blacklist shared across all instances. When a user logs out, the token is written to Redis with a TTL matching the remaining expiry time. Every instance checks Redis on every authenticated request. When the token expires naturally, Redis cleans it up automatically. This is also what makes session-based auth harder at scale: if you store sessions in memory instead of tokens, every request for that user must hit the same instance or the session is not found. JWT avoids that problem entirely, but you still need Redis the moment you want logout to actually work.
 
-**The lazy status update does not survive read replicas.** At scale, GetAppointments queries would move to a read replica to take load off the primary. Read replicas are read-only, so the UPDATE that marks completed appointments can no longer run inside the GetAppointments transaction. The lazy approach breaks. The replacement is a background worker running on a short interval, something like every minute, that marks completed appointments on the primary. The read query then becomes a pure read with no writes mixed in, which is what a replica expects.
+**The lazy status update does not survive read replicas.** Right now the app has one database server doing everything, reads and writes. At scale you add a second database server, a read replica, that is a live copy of the first. You point all read queries there to reduce the number of requests hitting the main server. The problem is a read replica only accepts reads. GetAppointments currently does both: it reads appointments and writes an UPDATE to mark old ones as completed. The moment that query runs on the replica, the UPDATE fails because the replica refuses it. The fix is a background worker that runs on a short interval and marks completed appointments on the main server. GetAppointments becomes a pure read with nothing else mixed in.
 
 The order things break under real load is: rate limiter loses state across instances, logout stops working, database goes down with no recovery path, connection pool exhausts under concurrency, then lazy update creates write contention on read paths. Each one has a clear fix and none of them require a rewrite of the core system.
 
