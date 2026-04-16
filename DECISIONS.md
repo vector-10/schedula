@@ -11,7 +11,7 @@ The hardest part was not the technical implementation but knowing what not to bu
 
 ### Single-User Personal Scheduling
 
-The assessment did not specify who books appointments or for whom. I assumed a single-user personal scheduling system where each authenticated user manages their own calendar. No attendee management, no invites, no host/guest distinction. Adding any of these features would introduce premature complexity without a clear business justification from the brief.
+The assessment did not specify who books appointments or for whom. I assumed a single-user personal scheduling system where each authenticated user manages their own calendar. No attendee management, no invites, no host/guest distinction. Adding any of these features would introduce premature complexity without a clear business justification from the assessment details.
 
 When I first read the assessment I genuinely started designing an attendee system in my head. Shared calendars, invite links, a host and guest model. I had to stop myself because the moment you introduce attendees, the entire data model changes. You need an attendees table, an invite system, a notification layer to tell people about bookings, and the conflict definition becomes ambiguous fast. Whose conflict matters when two users share a slot? The host's? All attendees? That one feature would have doubled the scope and introduced questions the assessment brief never answered. I scoped it out and documented it as a stakeholder question instead.
 
@@ -234,6 +234,10 @@ bcrypt is intentionally slow by design, it uses computational cost to make passw
 
 SELECT FOR UPDATE locking behaviour lives in the PostgreSQL engine and cannot be faked with sqlmock. A dedicated integration test runs against the real PostgreSQL instance and fires two goroutines simultaneously attempting to book the same slot. The test asserts exactly one succeeds and the other receives a conflict error. This test is tagged with //go:build integration so it is excluded from normal go test ./... runs.
 
+### No Frontend Tests
+
+The frontend has no automated tests. The flows I cared most about, registration through booking through cancellation, I tested manually. Adding Playwright E2E tests would have required spinning up the full stack in a test environment, seeding test users and managing test isolation between runs. I made the call that the time was better spent on correctness at the backend where the real risks are. In production, E2E coverage for the critical booking flows would be the first thing I added on the frontend.
+
 ### Honest Limitation
 
 Unit tests verify the logic around locking, not the locking behaviour itself. The integration test covers the actual concurrent behaviour. In a production codebase, a full integration suite against a live database would replace sqlmock entirely for critical paths.
@@ -296,15 +300,19 @@ Raw database/sql was chosen over an ORM because the most important queries in th
 
 The question is what breaks first when this service runs as multiple instances behind a load balancer, and what the fix is for each thing.
 
+**Load balancing works out of the box.** JWT authentication is stateless. The token is verified using a secret key, no session lookup, no shared state between instances. Any instance can handle any request from any user. Sticky sessions are not needed and not a concern here. Adding a load balancer in front of multiple backend containers is straightforward because auth does not require request affinity.
+
 **Rate limiter breaks immediately.** The current implementation is an in-memory map inside a single running process. Two instances means two separate maps. An attacker sending 10 requests to each instance bypasses the limit entirely. The fix is replacing the in-memory counter with a Redis counter shared across all instances. Each instance increments the same key in Redis on every request. This is a small code change with a big impact on correctness.
+
+**The database is a single point of failure.** Right now there is one Postgres instance. If it goes down, the entire service goes down. A production setup needs at minimum a hot standby replica that Postgres is continuously streaming writes to. If the primary dies, the standby can be promoted. This is different from a read replica, which offloads queries. A standby is purely for availability. Without it, any database crash means downtime with no automatic recovery path.
 
 **Connection pool needs tuning.** Go's database/sql has a connection pool by default but it is not configured. Under load, hundreds of goroutines competing for database connections will queue and slow down. Setting MaxOpenConns and MaxIdleConns explicitly, or switching to pgxpool for finer control, ensures predictable behaviour under concurrent traffic. This does not change any business logic, it is purely operational configuration.
 
+**Logout does not actually work across multiple instances.** Right now, logging out just deletes the token from localStorage on the frontend. The backend has no idea a logout happened. The JWT is still valid until it expires in 24 hours. On a single instance you could store a blacklist in memory, but with multiple instances each has its own memory. A token blacklisted on instance A is still accepted on instance B. The fix is a Redis blacklist shared across all instances. When a user logs out, the token is written to Redis with a TTL matching the remaining expiry time. Every instance checks Redis on every authenticated request. When the token expires naturally, Redis cleans it up automatically. This is also what makes session-based auth harder at scale: if you store sessions in memory instead of tokens, every request for that user must hit the same instance or the session is not found. JWT avoids that problem entirely, but you still need Redis the moment you want logout to actually work.
+
 **The lazy status update does not survive read replicas.** At scale, GetAppointments queries would move to a read replica to take load off the primary. Read replicas are read-only, so the UPDATE that marks completed appointments can no longer run inside the GetAppointments transaction. The lazy approach breaks. The replacement is a background worker running on a short interval, something like every minute, that marks completed appointments on the primary. The read query then becomes a pure read with no writes mixed in, which is what a replica expects.
 
-**Auth adds a database query on every request.** Every authenticated request currently requires the JWT to be verified, but user data is not cached. As traffic grows, adding a Redis cache for user records with a short TTL reduces the number of Postgres queries significantly. A token blacklist in Redis also becomes necessary once logout and token revocation are required, since JWTs are stateless and cannot be invalidated without a shared store.
-
-The order things break under real load is: rate limiter loses state across instances, connection pool exhausts under concurrency, lazy update creates write contention on read paths, then auth queries accumulate as a bottleneck. Each one has a clear fix and none of them require a rewrite of the core system.
+The order things break under real load is: rate limiter loses state across instances, logout stops working, database goes down with no recovery path, connection pool exhausts under concurrency, then lazy update creates write contention on read paths. Each one has a clear fix and none of them require a rewrite of the core system.
 
 ---
 
