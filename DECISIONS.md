@@ -23,6 +23,26 @@ A title, description (optional), date, start time, end time and status. These fi
 
 What constitutes a "schedule conflict" was left undefined. I interpreted a conflict as any time overlap between two appointments belonging to the same user. Cancelled appointments are excluded from conflict checks. Back-to-back appointment time slots are explicitly allowed. If the business wanted a buffer between appointments, the overlap query gets an extra interval parameter, the conflict error message changes and the frontend slot picker would need to reflect that constraint.
 
+```mermaid
+gantt
+    title Conflict Detection - Overlap Rules
+    dateFormat HH:mm
+    axisFormat %H:%M
+
+    section Existing
+    Existing Appointment     :existing, 09:00, 60m
+
+    section No Conflict
+    Ends before start        :done, 07:00, 60m
+    Starts after end         :done, 10:00, 60m
+    Back to back (allowed)   :done, 10:00, 1m
+
+    section Conflict
+    Starts inside            :crit, 09:30, 60m
+    Ends inside              :crit, 08:00, 90m
+    Fully overlaps           :crit, 08:30, 120m
+```
+
 During testing I noticed the conflict error message was showing times one hour behind what the user actually booked. The bug was that the error message was formatting times in UTC rather than the user's local timezone. The fix was in the backend. The user's timezone is now fetched from the database before validation runs, and time.In(loc) is used to format the conflict message. A small thing but it would have been genuinely confusing to a user who books a 9am slot and gets told they are conflicting with something at 8am.
 
 ### Timezone Handling
@@ -121,6 +141,25 @@ All conflict checks run inside a PostgreSQL transaction using SELECT FOR UPDATE.
 SELECT id FROM appointments
 WHERE user_id = $1 AND status = 'scheduled'
 FOR UPDATE
+```
+
+```mermaid
+sequenceDiagram
+    participant G1 as Goroutine 1
+    participant G2 as Goroutine 2
+    participant DB as PostgreSQL
+
+    G1->>DB: BEGIN TRANSACTION
+    G2->>DB: BEGIN TRANSACTION
+    G1->>DB: SELECT FOR UPDATE (acquires lock)
+    G2->>DB: SELECT FOR UPDATE (blocked, waiting)
+    G1->>DB: conflict check - no conflict found
+    G1->>DB: INSERT appointment
+    G1->>DB: COMMIT (lock released)
+    G2->>DB: SELECT FOR UPDATE (now acquires lock)
+    G2->>DB: conflict check - conflict found
+    G2->>DB: ROLLBACK
+    G2-->>G2: return codes.AlreadyExists
 ```
 
 ### Idempotency Keys
