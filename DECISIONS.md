@@ -284,9 +284,9 @@ The production path is full RRULE support with a higher or configurable occurren
 
 I chose PostgreSQL for reasons that connect directly to the problems this system has to solve.
 
-A scheduling system has three hard requirements from its database. It needs to prevent double bookings under concurrent load, which requires real transactions with row-level locking. It needs to query time ranges efficiently to find conflicts and display appointments on a calendar. It needs referential integrity to ensure appointments always belong to a valid user.
+A scheduling system has three hard requirements from its database. It needs to prevent double bookings under concurrent load, which requires real transactions with row-level locking. It needs to query time ranges efficiently to find conflicts and display appointments on a calendar. It needs referential integrity to ensure appointments always belong to a valid user through id.
 
-PostgreSQL handles all three natively. SELECT FOR UPDATE gives pessimistic row locking inside a transaction. Index scans on start_time and end_time make range queries fast. Foreign keys enforce that an appointment cannot exist without a user. These are not nice-to-haves, they are structural requirements and Postgres provides all of them out of the box.
+PostgreSQL handles all three natively. SELECT FOR UPDATE gives pessimistic row locking inside a transaction. Index scans on start_time and end_time make range queries fast. Foreign keys enforce that an appointment cannot exist without a user. These essential requirements and Postgres provides all of them out of the box.
 
 The alternative of a NoSQL database like MongoDB would require application-level conflict detection without the transactional guarantees. You could implement optimistic concurrency with version fields but the logic becomes complex and the failure modes are harder to reason about. The simplest correct solution for a system where data integrity is the hardest problem is a relational database with strong ACID guarantees.
 
@@ -303,8 +303,6 @@ The question is what breaks first when this service runs as multiple instances b
 **The lazy status update does not survive read replicas.** At scale, GetAppointments queries would move to a read replica to take load off the primary. Read replicas are read-only, so the UPDATE that marks completed appointments can no longer run inside the GetAppointments transaction. The lazy approach breaks. The replacement is a background worker running on a short interval, something like every minute, that marks completed appointments on the primary. The read query then becomes a pure read with no writes mixed in, which is what a replica expects.
 
 **Auth adds a database query on every request.** Every authenticated request currently requires the JWT to be verified, but user data is not cached. As traffic grows, adding a Redis cache for user records with a short TTL reduces the number of Postgres queries significantly. A token blacklist in Redis also becomes necessary once logout and token revocation are required, since JWTs are stateless and cannot be invalidated without a shared store.
-
-**Microservices are not the answer here.** Running multiple instances of the same monolith behind a load balancer is horizontal scaling and it is the right approach at this scale. Splitting auth and appointments into separate services would introduce network calls between them, distributed tracing requirements, separate deployment pipelines and a significant operational burden. The complexity cost is not justified by any real problem this system currently has. A well-structured monolith that scales horizontally is the correct architecture until there is a specific reason to split it, and there is not one here.
 
 The order things break under real load is: rate limiter loses state across instances, connection pool exhausts under concurrency, lazy update creates write contention on read paths, then auth queries accumulate as a bottleneck. Each one has a clear fix and none of them require a rewrite of the core system.
 
@@ -328,12 +326,22 @@ The order things break under real load is: rate limiter loses state across insta
 
 ## Questions I Would Have Asked
 
+
+**Who is the user** - Is this for individuals managing personal schedules or professionals managing client appointments? That answer would have changed whether I needed appointment types, client information fields, duration defaults or service categories. I assumed personal use but it was never stated and the data model would look different if the answer had been a professional booking tool.
+
 **Multi-user scheduling** - Would users ever need to book appointments with other users, sending invites, confirming attendance, or sharing calendars? I proceeded assuming single-user personal scheduling since no multi-party flow was specified. This assumption significantly shaped the data model: no attendees table, no invite system, no shared availability.
 
-**Notifications** - Should users receive reminders before scheduled appointments via email, push or in-app? Notifications would change the architecture significantly, requiring a background job, a notification service and potentially a third-party provider like SendGrid. I left it out entirely. Adding it during this assessment without a real email provider would have been tough.
+**Maximum appointments per user** - Is there a cap on how many appointments a user can create? I never validated this. Without a limit, a single user could generate unbounded rows over time which connects directly to the data retention question. In production this would need a clear answer before going live.
 
-**Recurrence scope** - Beyond weekly repetition, what recurrence patterns does the business need? Daily, monthly, custom intervals? I implemented weekly recurrence with a maximum of 4 occurrences, the simplest subset that demonstrates the concept without the complexity of full RRULE support.
+**Notifications** - Should users receive reminders before scheduled appointments via email, push or in-app? Notifications would change the architecture significantly, requiring a background job, a notification service and potentially a third-party provider like SendGrid. Without clarity on this I would not have known whether to build a simple in-app alert or a full delivery pipeline, so I left it out and documented it honestly.
+
+**Recurrence scope** - Beyond weekly repetition, what recurrence patterns does the business need? Daily, monthly, custom intervals? I implemented weekly recurrence with a maximum of 4 occurrences. If the answer had been daily or monthly, the occurrence cap becomes a real constraint, exception handling for individual occurrences becomes necessary and the data model needs to support skipping or modifying a single occurrence without affecting the rest of the group. That is a significantly more complex system.
 
 **Data retention** - How long should cancelled or completed appointments be retained? Should old records be purged after a certain period? I proceeded with indefinite retention where no records are ever deleted. At scale this becomes a real cost, a user with years of appointment history adds up and without a retention policy the appointments table grows without bound. In production, a data retention policy would be defined with the business and legal teams.
 
 **Conflict definition** - Should back-to-back appointments be allowed or blocked? Should buffer time between appointments be a requirement? I interpreted a conflict as any time overlap and explicitly allowed back-to-back appointments. That is one question I would not have shipped without an answer in a real product.
+
+**Appointment visibility** - Should users see their full history including cancelled and completed appointments, or only upcoming ones? I made this call myself and kept all records visible on the calendar. That decision directly shaped the deduplication filter on the frontend where cancelled appointments are suppressed only when an active one overlaps the same slot. A different answer here would have simplified the display logic but reduced transparency for the user.
+
+
+
