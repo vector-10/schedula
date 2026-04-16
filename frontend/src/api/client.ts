@@ -12,8 +12,6 @@ import type {
 
 const BASE_URL = '/v1'
 
-// Matches the error shape grpc-gateway returns:
-// { "code": <grpc_code>, "message": "...", "details": [] }
 export class ApiError extends Error {
   constructor(
     public readonly message: string,

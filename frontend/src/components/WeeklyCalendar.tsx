@@ -12,8 +12,6 @@ interface Props {
 const HOUR_HEIGHT = 64
 const TOTAL_HEIGHT = 24 * HOUR_HEIGHT
 
-// ── Date helpers ──────────────────────────────────────────────
-
 function getWeekStartDate(date: Date, startDay: 'monday' | 'sunday'): Date {
   const d = new Date(date)
   const day = d.getDay()
@@ -99,8 +97,6 @@ function formatWeekRange(days: Date[]): string {
   return `${new Intl.DateTimeFormat('en-US', { month: 'long' }).format(start)} ${start.getDate()} – ${end.getDate()}, ${start.getFullYear()}`
 }
 
-// ── Appointment block ─────────────────────────────────────────
-
 function AppointmentBlock({
   appointment,
   timezone,
@@ -141,8 +137,6 @@ function AppointmentBlock({
   )
 }
 
-// ── Main calendar ─────────────────────────────────────────────
-
 export default function WeeklyCalendar({ appointments, timezone, weekStart, onSelect }: Props) {
   const [weekStartDate, setWeekStartDate] = useState(() =>
     getWeekStartDate(new Date(), weekStart),
@@ -174,7 +168,6 @@ export default function WeeklyCalendar({ appointments, timezone, weekStart, onSe
   return (
     <div className="flex flex-col h-full select-none">
 
-      {/* Week navigation */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 flex-shrink-0">
         <button
           onClick={() => navigate(-1)}
@@ -197,7 +190,6 @@ export default function WeeklyCalendar({ appointments, timezone, weekStart, onSe
         </button>
       </div>
 
-      {/* Day headers */}
       <div className="flex border-b border-gray-100 flex-shrink-0">
         <div className="w-14 flex-shrink-0" />
         {weekDays.map((day, i) => {
@@ -219,11 +211,8 @@ export default function WeeklyCalendar({ appointments, timezone, weekStart, onSe
         })}
       </div>
 
-      {/* Scrollable grid */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         <div className="flex" style={{ height: TOTAL_HEIGHT }}>
-
-          {/* Time labels */}
           <div className="w-14 flex-shrink-0 relative">
             {Array.from({ length: 24 }, (_, hour) => (
               <div
@@ -236,7 +225,6 @@ export default function WeeklyCalendar({ appointments, timezone, weekStart, onSe
             ))}
           </div>
 
-          {/* Day columns */}
           {weekDays.map((day, colIdx) => {
             const dateStr = formatDateISO(day)
             const dayAppointmentsAll = appointments.filter(
@@ -260,7 +248,6 @@ export default function WeeklyCalendar({ appointments, timezone, weekStart, onSe
                   isToday ? 'bg-gray-50/50' : ''
                 }`}
               >
-                {/* Hour lines */}
                 {Array.from({ length: 24 }, (_, hour) => (
                   <div
                     key={hour}
@@ -269,7 +256,6 @@ export default function WeeklyCalendar({ appointments, timezone, weekStart, onSe
                   />
                 ))}
 
-                {/* Current time indicator */}
                 {isToday && (
                   <div
                     style={{ top: getCurrentTimeOffset() }}
@@ -280,7 +266,6 @@ export default function WeeklyCalendar({ appointments, timezone, weekStart, onSe
                   </div>
                 )}
 
-                {/* Appointments */}
                 {dayAppointments.map(appt => (
                   <AppointmentBlock
                     key={appt.id}

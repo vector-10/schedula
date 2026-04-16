@@ -30,7 +30,6 @@ export default function DashboardPage() {
   return (
     <div className="h-screen flex flex-col bg-white overflow-hidden">
 
-      {/* Navbar */}
       <header className="h-14 border-b border-gray-200 flex items-center justify-between px-6 flex-shrink-0">
         <span className="text-base font-semibold text-black tracking-tight">Schedula</span>
         <div className="flex items-center gap-5">
@@ -49,7 +48,6 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      {/* Calendar */}
       <main className="flex-1 overflow-hidden relative">
         {isLoading ? (
           <div className="flex items-center justify-center h-full">
@@ -64,7 +62,6 @@ export default function DashboardPage() {
           />
         )}
 
-        {/* FAB */}
         <div className="fixed bottom-8 right-8 z-40 flex flex-col items-end gap-2">
           <span className="text-sm font-medium text-gray-700">
             Create

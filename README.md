@@ -1,6 +1,6 @@
 # Schedula
 
-A schedule management system built with Go (gRPC), React (TypeScript), and PostgreSQL.
+A personal scheduling system where users can create, manage and cancel appointments on a weekly calendar. Built with Go (gRPC), React (TypeScript) and PostgreSQL with a focus on data integrity and safe concurrent booking.
 
 ## Stack
 
@@ -117,10 +117,10 @@ Authentication is via `Authorization: Bearer <token>` header.
 
 ## Key features
 
-- **Conflict detection** — prevents double booking with overlap check inside a transaction
-- **Concurrent booking safety** — `SELECT FOR UPDATE` row-level locking prevents race conditions
-- **Idempotency** — duplicate requests with the same key return the original result
-- **Weekly recurrence** — up to 4 occurrences, each checked for conflicts independently
-- **Lazy status updates** — appointments are marked completed on fetch, no background job needed
-- **Rate limiting** — Register and Login endpoints limited to 10 requests per minute per IP
-- **Structured logging** — JSON logs via `log/slog` with a gRPC interceptor chain
+- **Conflict detection**: prevents double booking with an overlap check inside a transaction
+- **Concurrent booking safety**: `SELECT FOR UPDATE` row-level locking ensures two simultaneous requests cannot both succeed
+- **Idempotency**: duplicate requests with the same key return the original result without a second insert
+- **Weekly recurrence**: up to 4 occurrences, each conflict-checked independently before any row is inserted
+- **Lazy status updates**: appointments are marked completed on fetch, no background job or cron needed
+- **Rate limiting**: Register and Login endpoints limited to 10 requests per minute per IP
+- **Structured logging**: JSON logs via `log/slog` across a gRPC interceptor chain
